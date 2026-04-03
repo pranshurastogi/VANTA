@@ -3,6 +3,7 @@
 import { useState } from "react"
 import { motion } from "framer-motion"
 import { Check, Wallet, AlertTriangle } from "lucide-react"
+import { useDynamicContext } from "@dynamic-labs/sdk-react-core"
 import { DashboardLayout } from "@/components/vanta/dashboard-layout"
 import { Switch } from "@/components/ui/switch"
 import { Button } from "@/components/ui/button"
@@ -111,6 +112,10 @@ function RadioOption({
 }
 
 export default function SettingsPage() {
+  const { primaryWallet, handleLogOut } = useDynamicContext()
+  const address = primaryWallet?.address
+  const shortAddress = address ? `${address.slice(0, 6)}...${address.slice(-4)}` : '—'
+
   const [confirmationMethod, setConfirmationMethod] = useState<ConfirmationMethod>("passkey")
   const [tier3Escalation, setTier3Escalation] = useState("passkey-15")
   const [notifications, setNotifications] = useState({
@@ -154,10 +159,17 @@ export default function SettingsPage() {
             <SettingsRow label="Wallet">
               <div className="flex items-center gap-3">
                 <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 rounded-full bg-vanta-teal pulse-dot" />
-                  <span className="font-mono text-sm text-foreground">0x1a2b...9f3e</span>
+                  <div className={`w-2 h-2 rounded-full ${address ? 'bg-vanta-teal pulse-dot' : 'bg-vanta-text-muted'}`} />
+                  <span className="font-mono text-sm text-foreground">{shortAddress}</span>
                 </div>
-                <span className="text-xs text-vanta-text-muted">Ethereum Mainnet</span>
+                {address && (
+                  <button
+                    onClick={handleLogOut}
+                    className="text-xs text-vanta-text-muted hover:text-vanta-red transition-colors"
+                  >
+                    Disconnect
+                  </button>
+                )}
               </div>
             </SettingsRow>
           </div>

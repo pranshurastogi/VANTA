@@ -11,6 +11,7 @@ import {
   Bot,
   Settings
 } from "lucide-react"
+import { useDynamicContext } from "@dynamic-labs/sdk-react-core"
 import { VantaWordmark } from "./logo"
 import { cn } from "@/lib/utils"
 
@@ -34,6 +35,12 @@ function PulsingDot({ className = "" }: { className?: string }) {
 
 export function Sidebar() {
   const pathname = usePathname()
+  const { primaryWallet, setShowAuthFlow } = useDynamicContext()
+
+  const address = primaryWallet?.address
+  const shortAddress = address
+    ? `${address.slice(0, 6)}...${address.slice(-4)}`
+    : null
 
   return (
     <aside className="fixed left-0 top-0 h-full w-60 bg-vanta-bg border-r border-border flex flex-col z-50">
@@ -80,19 +87,35 @@ export function Sidebar() {
 
       {/* Wallet Card */}
       <div className="p-4 mx-3 mb-4 bg-vanta-surface rounded-xl border border-border">
-        <div className="flex items-center gap-2 mb-2">
-          <PulsingDot />
-          <span className="text-[11px] text-vanta-text-secondary">Connected</span>
-        </div>
-        <div className="font-mono text-[13px] text-vanta-text-muted mb-1">
-          0x1a2b...9f3e
-        </div>
-        <div className="text-[13px] text-foreground mb-2">
-          vanta.pranshu.eth
-        </div>
-        <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-vanta-teal/10 text-vanta-teal text-[10px]">
-          World ID ✓
-        </div>
+        {shortAddress ? (
+          <>
+            <div className="flex items-center gap-2 mb-2">
+              <PulsingDot />
+              <span className="text-[11px] text-vanta-text-secondary">Connected</span>
+            </div>
+            <div className="font-mono text-[13px] text-vanta-text-muted mb-2">
+              {shortAddress}
+            </div>
+            <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-vanta-teal/10 text-vanta-teal text-[10px]">
+              World ID ✓
+            </div>
+          </>
+        ) : (
+          <button
+            onClick={() => setShowAuthFlow(true)}
+            className="w-full text-left"
+          >
+            <div className="flex items-center gap-2 mb-1">
+              <span className="relative flex h-1.5 w-1.5">
+                <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-vanta-text-muted" />
+              </span>
+              <span className="text-[11px] text-vanta-text-muted">Not connected</span>
+            </div>
+            <span className="text-[12px] text-vanta-teal hover:underline">
+              Connect wallet →
+            </span>
+          </button>
+        )}
       </div>
     </aside>
   )
