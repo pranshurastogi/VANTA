@@ -1,19 +1,19 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useRef } from "react"
 import { motion, AnimatePresence, Reorder } from "framer-motion"
-import { 
-  GripVertical, 
-  Plus, 
-  ChevronDown, 
+import {
+  GripVertical,
+  Plus,
+  ChevronDown,
   X,
   DollarSign,
   Users,
   FileCode,
   Clock,
   ShieldOff,
-  FileText,
-  Zap
+  Zap,
+  Zap as DynamicIcon,
 } from "lucide-react"
 import { DashboardLayout } from "@/components/vanta/dashboard-layout"
 import { Switch } from "@/components/ui/switch"
@@ -22,6 +22,19 @@ import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 
+// Known mainnet contract addresses for approved DeFi protocols
+const CONTRACT_ADDRESSES: Record<string, string[]> = {
+  "Uniswap V3":  ["0xE592427A0AEce92De3Edee1F18E0157C05861564"],
+  "Aave V3":     ["0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2"],
+  "Compound":    ["0xc3d688B66703497DAA19211EEdff47f25384cdc3"],
+  "1inch":       ["0x1111111254EEB25477B68fb85Ed929f73A960582"],
+  "Lido":        ["0xae7ab96520DE3A18E5e111B5EaAb095312D7fE84"],
+  "Curve":       ["0xD533a949740bb3306d119CC777fa900bA034cd52"],
+}
+
+// Rules that can be enforced via Dynamic's Policy API
+const DYNAMIC_COMPATIBLE = new Set(["2", "3", "4"])
+
 interface RuleConfig {
   limit?: number
   addresses?: { address: string; label: string }[]
@@ -29,6 +42,7 @@ interface RuleConfig {
   from?: string
   to?: string
   timezone?: string
+  dynamicRuleId?: string  // ID returned by Dynamic Policy API
 }
 
 interface Rule {
@@ -116,12 +130,13 @@ const quickSetAmounts = [100, 250, 500, 1000, 2500]
 
 interface RuleCardProps {
   rule: Rule
+  isDynamic: boolean
   onToggle: (id: string) => void
   onUpdate: (id: string, config: RuleConfig) => void
   onDelete: (id: string) => void
 }
 
-function RuleCard({ rule, onToggle, onUpdate, onDelete }: RuleCardProps) {
+function RuleCard({ rule, isDynamic, onToggle, onUpdate, onDelete }: RuleCardProps) {
   const [isExpanded, setIsExpanded] = useState(false)
 
   const renderEditView = () => {
@@ -288,7 +303,15 @@ function RuleCard({ rule, onToggle, onUpdate, onDelete }: RuleCardProps) {
           className="data-[state=checked]:bg-vanta-teal"
         />
         <div className="flex-1 min-w-0">
-          <h3 className="text-sm text-foreground">{rule.name}</h3>
+          <div className="flex items-center gap-2">
+            <h3 className="text-sm text-foreground">{rule.name}</h3>
+            {isDynamic && (
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400 text-[10px] font-medium shrink-0">
+                <DynamicIcon size={10} />
+                Dynamic
+              </span>
+            )}
+          </div>
           <p className="text-xs text-vanta-text-muted truncate">{rule.description}</p>
         </div>
         <div className="flex items-center gap-2">
@@ -397,20 +420,125 @@ function AddRuleModal({ onClose, onAdd }: AddRuleModalProps) {
   )
 }
 
+// Build the Dynamic policy payload from a VANTA rule
+function toDynamicPolicy(rule: Rule) {
+  if (rule.type === "limit") {
+    // Per-transaction value limit (native ETH, EVM mainnet)
+    return {
+      chain: "EVM",
+      chainIds: [1],
+      name: rule.name,
+      ruleType: "allow",
+      addresses: [] as string[],
+      valueLimit: {
+        maxPerCall: String(Math.round((rule.config?.limit ?? 0) * 1e18)),
+      },
+    }
+  }
+
+  if (rule.type === "whitelist" && rule.config?.addresses) {
+    return {
+      chain: "EVM",
+      chainIds: [1],
+      name: rule.name,
+      ruleType: "allow",
+      addresses: rule.config.addresses.map((a) => a.address),
+    }
+  }
+
+  if (rule.type === "whitelist" && rule.config?.contracts) {
+    const addresses = rule.config.contracts
+      .filter((c) => c.enabled)
+      .flatMap((c) => CONTRACT_ADDRESSES[c.name] ?? [])
+    return {
+      chain: "EVM",
+      chainIds: [1],
+      name: rule.name,
+      ruleType: "allow",
+      addresses,
+    }
+  }
+
+  return null
+}
+
 export default function RulesPage() {
   const [rules, setRules] = useState<Rule[]>(initialRules)
   const [showAddModal, setShowAddModal] = useState(false)
+  // Track in-flight Dynamic syncs per rule id
+  const syncing = useRef<Set<string>>(new Set())
+
+  async function syncWithDynamic(rule: Rule) {
+    if (!DYNAMIC_COMPATIBLE.has(rule.id) || syncing.current.has(rule.id)) return
+    const policy = toDynamicPolicy(rule)
+    if (!policy) return
+
+    syncing.current.add(rule.id)
+    try {
+      const existingId = rule.config?.dynamicRuleId
+      const body = existingId
+        ? { rulesToUpdate: [{ id: existingId, ...policy }] }
+        : { rulesToAdd: [policy] }
+
+      const res = await fetch("/api/rules", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      })
+      if (!res.ok) return
+
+      const data = await res.json()
+      // Store the returned rule ID so future updates use PUT
+      const returnedId: string | undefined =
+        data?.rulesToAdd?.[0]?.id ?? data?.rulesToUpdate?.[0]?.id
+      if (returnedId && !existingId) {
+        setRules((prev) =>
+          prev.map((r) =>
+            r.id === rule.id
+              ? { ...r, config: { ...r.config, dynamicRuleId: returnedId } }
+              : r
+          )
+        )
+      }
+    } finally {
+      syncing.current.delete(rule.id)
+    }
+  }
+
+  async function deleteFromDynamic(rule: Rule) {
+    const ruleId = rule.config?.dynamicRuleId
+    if (!ruleId) return
+    await fetch("/api/rules", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ruleIdsToDelete: [ruleId] }),
+    })
+  }
 
   const handleToggle = (id: string) => {
-    setRules(rules.map(r => r.id === id ? { ...r, enabled: !r.enabled } : r))
+    const rule = rules.find((r) => r.id === id)
+    if (!rule) return
+    const updated = { ...rule, enabled: !rule.enabled }
+    setRules(rules.map((r) => (r.id === id ? updated : r)))
+    if (DYNAMIC_COMPATIBLE.has(id)) {
+      if (updated.enabled) syncWithDynamic(updated)
+      else deleteFromDynamic(rule)
+    }
   }
 
   const handleUpdate = (id: string, config: RuleConfig) => {
-    setRules(rules.map(r => r.id === id ? { ...r, config } : r))
+    const updated = rules.map((r) => (r.id === id ? { ...r, config } : r))
+    setRules(updated)
+    const rule = updated.find((r) => r.id === id)
+    if (rule && DYNAMIC_COMPATIBLE.has(id) && rule.enabled) {
+      syncWithDynamic(rule)
+    }
   }
 
   const handleDelete = (id: string) => {
-    setRules(rules.filter(r => r.id !== id))
+    const rule = rules.find((r) => r.id === id)
+    if (rule) deleteFromDynamic(rule)
+    setRules(rules.filter((r) => r.id !== id))
   }
 
   const handleAddRule = (template: string) => {
@@ -453,6 +581,7 @@ export default function RulesPage() {
             <Reorder.Item key={rule.id} value={rule}>
               <RuleCard
                 rule={rule}
+                isDynamic={DYNAMIC_COMPATIBLE.has(rule.id)}
                 onToggle={handleToggle}
                 onUpdate={handleUpdate}
                 onDelete={handleDelete}
