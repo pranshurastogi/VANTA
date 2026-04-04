@@ -13,11 +13,11 @@ import {
   Clock,
   Send,
   X,
-  Loader2,
   Sparkles,
   History,
   RefreshCw,
 } from "lucide-react"
+import { InfinityLoader } from "@/components/ui/loader-13"
 import { DashboardLayout } from "@/components/vanta/dashboard-layout"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
@@ -447,7 +447,7 @@ function ScanForm({
         >
           {loading ? (
             <>
-              <Loader2 size={16} className="animate-spin" />
+              <InfinityLoader size={16} />
               Scanning with Gemini 3…
             </>
           ) : rateLimited ? (
@@ -788,7 +788,7 @@ export default function ScannerPage() {
               <div>
                 {historyLoading && history.length === 0 ? (
                   <div className="px-4 py-8 text-center">
-                    <Loader2 size={20} className="animate-spin text-vanta-text-muted mx-auto mb-2" />
+                    <InfinityLoader size={20} className="mx-auto mb-2 text-vanta-text-muted" />
                     <p className="text-xs text-vanta-text-muted">Loading scan history…</p>
                   </div>
                 ) : history.length === 0 ? (

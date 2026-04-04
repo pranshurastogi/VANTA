@@ -10,12 +10,12 @@ import {
   Globe,
   Usb,
   Type,
-  Loader2,
   ExternalLink,
   Copy,
   Shield,
   Clock,
 } from "lucide-react"
+import { InfinityLoader } from "@/components/ui/loader-13"
 import { VantaLogo } from "./logo"
 import { StatusBadge } from "./status-badge"
 import { cn } from "@/lib/utils"
@@ -438,7 +438,7 @@ export function ConfirmationModal({
                       <div className="absolute inset-0 shimmer-border opacity-50 group-hover:opacity-0" />
                       {verifying ? (
                         <>
-                          <Loader2 size={20} className="animate-spin" />
+                          <InfinityLoader size={20} />
                           <span className="text-sm font-medium">Verifying…</span>
                         </>
                       ) : (
@@ -471,7 +471,7 @@ export function ConfirmationModal({
                   exit={{ opacity: 0 }}
                   className="p-8 py-12 text-center"
                 >
-                  <Loader2 size={40} className="mx-auto mb-4 text-vanta-teal animate-spin" />
+                  <InfinityLoader size={40} className="mx-auto mb-4" />
                   <h3 className="font-mono text-lg text-foreground mb-2">Processing</h3>
                   <p className="text-xs text-vanta-text-muted">Confirming transaction…</p>
                 </motion.div>

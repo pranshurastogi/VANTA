@@ -535,7 +535,10 @@ erDiagram
 
 | Document | Description |
 |----------|-------------|
-| [Dynamic Integration Guide](docs/dynamic-integration.md) | Detailed guide on Dynamic SDK setup, WaaS, policy sync, server wallets |
+| [Partner Docs Index](docs/README.md) | Sponsor-facing index for Dynamic, World ID, and Ledger integrations |
+| [Dynamic Integration Guide](docs/dynamic-integration.md) | Detailed guide on Dynamic Javascript SDK, Policy API, passkeys, and Node SDK usage |
+| [World ID Integration Guide](docs/world-id-integration.md) | Detailed guide on World ID proof verification, nullifier checks, and transaction gating |
+| [Ledger Integration Guide](docs/ledger-integration.md) | Detailed guide on Ledger Wallet Provider, hardware approval flows, and UX integration |
 
 ---
 

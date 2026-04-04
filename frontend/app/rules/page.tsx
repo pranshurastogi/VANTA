@@ -15,8 +15,8 @@ import {
   Zap,
   ShieldAlert,
   Check,
-  Loader2,
 } from "lucide-react"
+import { InfinityLoader } from "@/components/ui/loader-13"
 import { DashboardLayout } from "@/components/vanta/dashboard-layout"
 import { Switch } from "@/components/ui/switch"
 import { Slider } from "@/components/ui/slider"
@@ -341,7 +341,7 @@ function RuleCard({ rule, onToggle, onSave, onDelete }: RuleCardProps) {
                   className="bg-vanta-teal text-vanta-bg hover:bg-vanta-teal/90 min-w-[80px]"
                 >
                   {saving ? (
-                    <Loader2 size={14} className="animate-spin" />
+                    <InfinityLoader size={14} />
                   ) : saved ? (
                     <><Check size={14} className="mr-1" /> Saved</>
                   ) : (
@@ -536,7 +536,7 @@ export default function RulesPage() {
 
         {isLoading ? (
           <div className="flex items-center justify-center py-16">
-            <Loader2 size={28} className="animate-spin text-vanta-teal" />
+            <InfinityLoader size={28} />
           </div>
         ) : rules.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 text-vanta-text-muted">

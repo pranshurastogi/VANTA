@@ -5,17 +5,21 @@ import { motion, AnimatePresence } from "framer-motion"
 import {
   Check,
   AlertTriangle,
-  Loader2,
   Fingerprint,
   Mail,
   ShieldCheck,
   Key,
+  Globe,
+  Usb,
+  ChevronDown,
+  ArrowRight,
+  Type,
 } from "lucide-react"
+import { InfinityLoader } from "@/components/ui/loader-13"
 import { useDynamic } from "@/lib/dynamic/context"
 import { useUser, type ConfirmationMethod } from "@/hooks/useUser"
 import { usePasskey } from "@/hooks/usePasskey"
 import { DashboardLayout } from "@/components/vanta/dashboard-layout"
-import { Switch } from "@/components/ui/switch"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { StatusBadge } from "@/components/vanta/status-badge"
@@ -24,119 +28,260 @@ import { WorldIdGate } from "@/components/vanta/world-id-gate"
 import { LedgerGate } from "@/components/vanta/ledger-gate"
 import { useWorldId } from "@/hooks/useWorldId"
 
-// ─── Shared UI ────────────────────────────────────────────
+// ── Collapsible section wrapper ──────────────────────────────────────────────
 
-function SettingsSection({
+function CollapsibleSection({
   title,
-  children,
+  defaultOpen = false,
   danger,
+  children,
 }: {
   title: string
-  children: React.ReactNode
+  defaultOpen?: boolean
   danger?: boolean
+  children: React.ReactNode
 }) {
+  const [open, setOpen] = useState(defaultOpen)
   return (
     <motion.div
-      initial={{ opacity: 0, y: 8 }}
+      initial={{ opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
       className={cn(
-        "bg-vanta-surface border border-border rounded-xl overflow-hidden",
-        danger && "border-vanta-red/30 bg-[#1A1010]"
+        "rounded-xl border overflow-hidden",
+        danger ? "border-red-500/30 bg-[#1A1010]" : "border-border bg-vanta-surface"
       )}
     >
-      <div className="px-6 py-4 border-b border-border">
-        <h3
-          className={cn(
-            "text-sm font-medium",
-            danger ? "text-vanta-red" : "text-foreground"
-          )}
-        >
+      <button
+        onClick={() => setOpen(!open)}
+        className="w-full flex items-center justify-between px-5 py-4 hover:bg-white/[0.02] transition-colors"
+      >
+        <span className={cn("text-sm font-medium", danger ? "text-red-400" : "text-foreground")}>
           {title}
-        </h3>
-      </div>
-      <div className="p-6">{children}</div>
+        </span>
+        <motion.div animate={{ rotate: open ? 180 : 0 }} transition={{ duration: 0.2 }}>
+          <ChevronDown size={15} className="text-muted-foreground" />
+        </motion.div>
+      </button>
+      <AnimatePresence initial={false}>
+        {open && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.22 }}
+            className="overflow-hidden"
+          >
+            <div className="border-t border-border px-5 py-5">{children}</div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </motion.div>
   )
 }
 
-function SettingsRow({
-  label,
-  description,
+// ── Security method card (card-21 inspired) ──────────────────────────────────
+
+function SecurityMethodCard({
+  icon: Icon,
+  title,
+  subtitle,
+  statusLabel,
+  statusOk,
+  themeHsl,
+  defaultExpanded = false,
   children,
 }: {
-  label: string
-  description?: string
+  icon: React.ElementType
+  title: string
+  subtitle: string
+  statusLabel: string
+  statusOk: boolean
+  themeHsl: string
+  defaultExpanded?: boolean
   children: React.ReactNode
 }) {
+  const [expanded, setExpanded] = useState(defaultExpanded)
+
   return (
-    <div className="flex items-center justify-between py-3 border-b border-border last:border-0">
-      <div>
-        <span className="text-sm text-foreground">{label}</span>
-        {description && (
-          <p className="text-xs text-vanta-text-muted mt-0.5">{description}</p>
-        )}
+    <div
+      className="group relative flex flex-col rounded-2xl overflow-hidden border border-white/8"
+      style={{ "--theme-color": themeHsl } as React.CSSProperties}
+    >
+      {/* Background gradient */}
+      <div
+        className="absolute inset-0 -z-10"
+        style={{
+          background: `radial-gradient(ellipse 80% 60% at 30% 0%, hsl(${themeHsl} / 0.18), transparent 70%), #0D0D0D`,
+        }}
+      />
+      {/* Dot grid overlay */}
+      <div
+        className="absolute inset-0 -z-10 opacity-30"
+        style={{
+          backgroundImage: `radial-gradient(circle, hsl(${themeHsl} / 0.25) 0.6px, transparent 1px)`,
+          backgroundSize: "14px 14px",
+        }}
+      />
+
+      {/* Header */}
+      <div className="p-5 flex flex-col flex-1">
+        <div className="flex items-start justify-between mb-4">
+          <div
+            className="w-10 h-10 rounded-xl flex items-center justify-center"
+            style={{ background: `hsl(${themeHsl} / 0.15)`, border: `1px solid hsl(${themeHsl} / 0.3)` }}
+          >
+            <Icon size={18} style={{ color: `hsl(${themeHsl})` }} />
+          </div>
+          <span
+            className="text-[10px] font-medium px-2 py-1 rounded-full"
+            style={{
+              background: statusOk ? `hsl(${themeHsl} / 0.12)` : "rgba(255,255,255,0.05)",
+              color: statusOk ? `hsl(${themeHsl})` : "#888",
+              border: `1px solid ${statusOk ? `hsl(${themeHsl} / 0.3)` : "rgba(255,255,255,0.1)"}`,
+            }}
+          >
+            {statusLabel}
+          </span>
+        </div>
+
+        <h3 className="text-sm font-semibold text-foreground">{title}</h3>
+        <p className="text-xs text-muted-foreground mt-1 leading-relaxed flex-1">{subtitle}</p>
+
+        {/* CTA button (card-21 style) */}
+        <button
+          onClick={() => setExpanded(!expanded)}
+          className="mt-5 flex items-center justify-between w-full rounded-lg px-4 py-2.5 text-xs font-medium transition-all duration-300"
+          style={{
+            background: `hsl(${themeHsl} / 0.12)`,
+            border: `1px solid hsl(${themeHsl} / 0.25)`,
+            color: `hsl(${themeHsl})`,
+          }}
+        >
+          <span>{expanded ? "Collapse" : statusOk ? "Manage" : "Set up"}</span>
+          <motion.div animate={{ rotate: expanded ? 90 : 0 }} transition={{ duration: 0.2 }}>
+            <ArrowRight size={13} />
+          </motion.div>
+        </button>
       </div>
-      {children}
+
+      {/* Expanded content */}
+      <AnimatePresence initial={false}>
+        {expanded && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.22 }}
+            className="overflow-hidden"
+          >
+            <div
+              className="px-5 py-5 border-t"
+              style={{ borderColor: `hsl(${themeHsl} / 0.2)` }}
+            >
+              {children}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   )
 }
 
-function RadioOption({
-  selected,
-  label,
+// ── Confirmation method row ──────────────────────────────────────────────────
+
+function ConfirmMethodRow({
+  icon: Icon,
+  method,
+  title,
   description,
   recommended,
-  disabled,
   badge,
+  selected,
   onSelect,
+  children,
 }: {
-  selected: boolean
-  label: string
-  description?: string
+  icon: React.ElementType
+  method: ConfirmationMethod
+  title: string
+  description: string
   recommended?: boolean
-  disabled?: boolean
   badge?: React.ReactNode
+  selected: boolean
   onSelect: () => void
+  children?: React.ReactNode
 }) {
+  const [expanded, setExpanded] = useState(false)
+
   return (
-    <button
-      onClick={onSelect}
-      disabled={disabled}
+    <div
       className={cn(
-        "flex items-start gap-3 w-full text-left p-3 rounded-lg border transition-colors",
-        selected
-          ? "border-vanta-teal bg-vanta-teal/5"
-          : "border-border hover:border-border-hover",
-        disabled && "opacity-50 cursor-not-allowed"
+        "rounded-xl border transition-colors overflow-hidden",
+        selected ? "border-[#00FFB2]/50 bg-[#00FFB2]/[0.04]" : "border-border hover:border-white/20"
       )}
     >
-      <div
-        className={cn(
-          "w-4 h-4 rounded-full border-2 flex items-center justify-center mt-0.5",
-          selected ? "border-vanta-teal" : "border-vanta-text-muted"
-        )}
+      <button
+        onClick={() => { onSelect(); setExpanded(!expanded) }}
+        className="w-full flex items-center gap-3 px-4 py-3.5 text-left"
       >
-        {selected && <div className="w-2 h-2 rounded-full bg-vanta-teal" />}
-      </div>
-      <div className="flex-1">
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-foreground">{label}</span>
-          {recommended && (
-            <span className="text-[10px] px-1.5 py-0.5 rounded bg-vanta-teal/10 text-vanta-teal">
-              recommended
-            </span>
+        {/* Radio dot */}
+        <div
+          className={cn(
+            "w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors",
+            selected ? "border-[#00FFB2]" : "border-muted-foreground/40"
           )}
-          {badge}
+        >
+          {selected && <div className="w-1.5 h-1.5 rounded-full bg-[#00FFB2]" />}
         </div>
-        {description && (
-          <p className="text-xs text-vanta-text-muted mt-0.5">{description}</p>
+
+        {/* Icon */}
+        <div className={cn(
+          "w-7 h-7 rounded-lg flex items-center justify-center shrink-0",
+          selected ? "bg-[#00FFB2]/10" : "bg-muted/50"
+        )}>
+          <Icon size={13} className={selected ? "text-[#00FFB2]" : "text-muted-foreground"} />
+        </div>
+
+        {/* Labels */}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-sm text-foreground">{title}</span>
+            {recommended && (
+              <span className="text-[9px] px-1.5 py-0.5 rounded bg-[#00FFB2]/10 text-[#00FFB2] uppercase tracking-wide">
+                recommended
+              </span>
+            )}
+            {badge}
+          </div>
+          <p className="text-xs text-muted-foreground mt-0.5 truncate">{description}</p>
+        </div>
+
+        {/* Chevron for expandable */}
+        {children && (
+          <motion.div animate={{ rotate: expanded ? 180 : 0 }} transition={{ duration: 0.18 }}>
+            <ChevronDown size={13} className="text-muted-foreground shrink-0" />
+          </motion.div>
         )}
-      </div>
-    </button>
+      </button>
+
+      {/* Expanded inline content */}
+      <AnimatePresence initial={false}>
+        {expanded && children && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="overflow-hidden"
+          >
+            <div className="px-4 pb-4 pt-1 border-t border-border/50">{children}</div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
   )
 }
 
-// ─── Page ─────────────────────────────────────────────────
+// ── Page ────────────────────────────────────────────────────────────────────
 
 export default function SettingsPage() {
   const { wallet, disconnect } = useDynamic()
@@ -151,20 +296,16 @@ export default function SettingsPage() {
   } = usePasskey()
   const address = wallet?.address
   const { verified: worldIdVerified } = useWorldId(address)
-  const shortAddress = address
-    ? `${address.slice(0, 6)}...${address.slice(-4)}`
-    : "—"
+  const shortAddress = address ? `${address.slice(0, 6)}...${address.slice(-4)}` : "—"
 
-  // Local state synced from user
-  const [confirmationMethod, setConfirmationMethod] =
-    useState<ConfirmationMethod>("passkey")
+  const [confirmationMethod, setConfirmationMethod] = useState<ConfirmationMethod>("passkey")
   const [tier3Escalation, setTier3Escalation] = useState("passkey-15")
   const [email, setEmail] = useState("")
   const [emailSaved, setEmailSaved] = useState(false)
   const [saving, setSaving] = useState(false)
   const [passkeyRegistering, setPasskeyRegistering] = useState(false)
+  const [passkeySuccess, setPasskeySuccess] = useState(false)
 
-  // Load user settings
   useEffect(() => {
     if (!user) return
     setConfirmationMethod(user.confirmation_method ?? "passkey")
@@ -194,8 +335,6 @@ export default function SettingsPage() {
     setTimeout(() => setEmailSaved(false), 2000)
   }
 
-  const [passkeySuccess, setPasskeySuccess] = useState(false)
-
   const handleRegisterPasskey = async () => {
     setPasskeyRegistering(true)
     setPasskeySuccess(false)
@@ -209,366 +348,272 @@ export default function SettingsPage() {
 
   return (
     <DashboardLayout title="Settings">
-      <div className="space-y-6">
+      <div className="space-y-4 max-w-3xl">
+
         {/* ── Identity ── */}
-        <SettingsSection title="Identity & Wallet">
-          <div className="space-y-4">
-            <SettingsRow label="Wallet">
-              <div className="flex items-center gap-3">
-                <div className="flex items-center gap-2">
-                  <div
-                    className={`w-2 h-2 rounded-full ${
-                      address ? "bg-vanta-teal pulse-dot" : "bg-vanta-text-muted"
-                    }`}
-                  />
-                  <span className="font-mono text-sm text-foreground">
-                    {shortAddress}
-                  </span>
-                </div>
+        <CollapsibleSection title="Identity & Wallet" defaultOpen>
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs text-muted-foreground mb-1">Connected wallet</p>
+              <div className="flex items-center gap-2">
+                <div className={cn("w-2 h-2 rounded-full", address ? "bg-[#00FFB2] pulse-dot" : "bg-muted-foreground")} />
+                <span className="font-mono text-sm text-foreground">{shortAddress}</span>
                 <StatusBadge variant="safe">Sepolia</StatusBadge>
-                {address && (
-                  <button
-                    onClick={disconnect}
-                    className="text-xs text-vanta-text-muted hover:text-vanta-red transition-colors"
-                  >
-                    Disconnect
-                  </button>
-                )}
               </div>
-            </SettingsRow>
-
-          </div>
-        </SettingsSection>
-
-        {/* ── World ID Verification ── */}
-        <SettingsSection title="World ID — Proof of Human">
-          <WorldIdGate address={address} />
-        </SettingsSection>
-
-        {/* ── Ledger Hardware Wallet ── */}
-        <SettingsSection title="Ledger — Hardware Signer">
-          <div className="space-y-3">
-            <p className="text-xs text-vanta-text-muted">
-              Connect your Ledger hardware signer via USB or Bluetooth. Once connected, it can
-              be used as the confirmation method for Tier 2 &amp; Tier 3 transactions.
-              Requires Chrome 89+, Edge 89+, or Brave on desktop.
-            </p>
-            <LedgerGate />
-          </div>
-        </SettingsSection>
-
-        {/* ── Passkey Setup ── */}
-        <SettingsSection title="Passkey / Biometric">
-          <div className="space-y-4">
-            <div className="flex items-center gap-3">
-              <motion.div
-                animate={passkeyRegistered ? { scale: [1, 1.15, 1] } : {}}
-                transition={{ duration: 0.4 }}
-                className={cn(
-                  "w-10 h-10 rounded-lg flex items-center justify-center transition-colors duration-300",
-                  passkeyRegistered ? "bg-vanta-teal/10" : "bg-vanta-elevated"
-                )}
+            </div>
+            {address && (
+              <button
+                onClick={disconnect}
+                className="text-xs text-muted-foreground hover:text-red-400 transition-colors"
               >
-                <Fingerprint
-                  size={22}
-                  className={cn(
-                    "transition-colors duration-300",
-                    passkeyRegistered ? "text-vanta-teal" : "text-vanta-text-muted"
-                  )}
-                />
-              </motion.div>
-              <div className="flex-1">
+                Disconnect
+              </button>
+            )}
+          </div>
+        </CollapsibleSection>
+
+        {/* ── Security Methods — card-21 style grid ── */}
+        <div>
+          <p className="text-xs text-muted-foreground mb-3 px-1">Verification methods</p>
+          <div className="grid gap-3 sm:grid-cols-3">
+
+            {/* Passkey */}
+            <SecurityMethodCard
+              icon={Fingerprint}
+              title="Passkey"
+              subtitle="Biometric via WebAuthn. Fastest and most secure — Face ID or Touch ID."
+              statusLabel={passkeyRegistered ? "Ready" : "Not set up"}
+              statusOk={passkeyRegistered}
+              themeHsl="158 100% 50%"
+            >
+              <div className="space-y-3">
                 <div className="flex items-center gap-2">
-                  <span className="text-sm text-foreground">
+                  <Fingerprint size={14} className={passkeyRegistered ? "text-[#00FFB2]" : "text-muted-foreground"} />
+                  <span className="text-xs text-foreground">
                     {passkeyRegistered
-                      ? "Passkey registered"
+                      ? `${passkeys.length} passkey${passkeys.length !== 1 ? "s" : ""} registered`
                       : "No passkey registered"}
                   </span>
-                  <AnimatePresence>
-                    {passkeyRegistered && (
-                      <motion.div
-                        initial={{ opacity: 0, scale: 0.8 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        exit={{ opacity: 0, scale: 0.8 }}
-                      >
-                        <StatusBadge variant="safe">Active</StatusBadge>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
                 </div>
-                <p className="text-xs text-vanta-text-muted mt-0.5">
-                  {passkeyRegistered
-                    ? `${passkeys.length} passkey${passkeys.length > 1 ? "s" : ""} registered — used for Face ID / Touch ID confirmation`
-                    : "Register a passkey to enable biometric confirmation for transactions"}
-                </p>
+                <Button
+                  onClick={handleRegisterPasskey}
+                  disabled={passkeyLoading || passkeyRegistering || !passkeySupported || !address}
+                  size="sm"
+                  className="w-full border border-[#00FFB2]/40 bg-transparent text-[#00FFB2] hover:bg-[#00FFB2]/10 h-8 text-xs"
+                >
+                  {passkeyRegistering ? <InfinityLoader size={12} className="mr-1.5" /> : <Key size={12} className="mr-1.5" />}
+                  {passkeyRegistered ? "Add another" : "Register passkey"}
+                </Button>
+
+                <AnimatePresence mode="wait">
+                  {!address && (
+                    <motion.p key="nw" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="text-[10px] text-amber-400 flex items-center gap-1">
+                      <AlertTriangle size={10} /> Connect wallet first
+                    </motion.p>
+                  )}
+                  {passkeyError && (
+                    <motion.p key="err" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="text-[10px] text-red-400">{passkeyError}</motion.p>
+                  )}
+                  {passkeySuccess && (
+                    <motion.p key="ok" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="text-[10px] text-[#00FFB2] flex items-center gap-1">
+                      <Check size={10} /> Passkey registered
+                    </motion.p>
+                  )}
+                </AnimatePresence>
+
+                {passkeys.length > 0 && (
+                  <div className="space-y-1.5 pt-1">
+                    {passkeys.map((pk, i) => (
+                      <div key={pk.id} className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-white/[0.04] border border-white/[0.06]">
+                        <ShieldCheck size={11} className="text-[#00FFB2] shrink-0" />
+                        <span className="font-mono text-[10px] text-foreground flex-1">{pk.alias || `Passkey ${i + 1}`}</span>
+                        {pk.createdAt && <span className="text-[9px] text-muted-foreground">{new Date(pk.createdAt).toLocaleDateString()}</span>}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
-              <Button
-                onClick={handleRegisterPasskey}
-                disabled={passkeyLoading || passkeyRegistering || !passkeySupported || !address}
-                variant="outline"
-                className={cn(
-                  "border-vanta-teal text-vanta-teal hover:bg-vanta-teal hover:text-vanta-bg transition-all",
-                  passkeyRegistered && "border-border text-vanta-text-secondary hover:border-vanta-teal"
-                )}
+            </SecurityMethodCard>
+
+            {/* World ID */}
+            <SecurityMethodCard
+              icon={Globe}
+              title="World ID"
+              subtitle="Cryptographic proof of unique human. Strongest Sybil resistance for Tier 2."
+              statusLabel={worldIdVerified ? "Verified" : "Not verified"}
+              statusOk={worldIdVerified}
+              themeHsl="239 84% 67%"
+            >
+              <WorldIdGate address={address} compact />
+            </SecurityMethodCard>
+
+            {/* Ledger */}
+            <SecurityMethodCard
+              icon={Usb}
+              title="Ledger"
+              subtitle="Sign confirmations on your hardware wallet via USB or Bluetooth."
+              statusLabel="Hardware"
+              statusOk={false}
+              themeHsl="25 95% 53%"
+            >
+              <p className="text-[10px] text-muted-foreground mb-3">
+                Connect via USB or Bluetooth. Requires Chrome 89+, Edge 89+, or Brave on desktop.
+              </p>
+              <LedgerGate />
+            </SecurityMethodCard>
+
+          </div>
+        </div>
+
+        {/* ── Confirmation method — stacked list ── */}
+        <CollapsibleSection title="Confirmation method" defaultOpen>
+          <div className="space-y-3">
+            <p className="text-xs text-muted-foreground">
+              How you verify Tier 2 transactions before they are signed
+            </p>
+
+            <div className="space-y-2">
+              <ConfirmMethodRow
+                icon={Fingerprint}
+                method="passkey"
+                title="Passkey (Face ID / Touch ID)"
+                description="Biometric verification via WebAuthn — fastest and most secure"
+                recommended
+                badge={passkeyRegistered
+                  ? <StatusBadge variant="safe">Ready</StatusBadge>
+                  : <StatusBadge variant="warning">Not set up</StatusBadge>
+                }
+                selected={confirmationMethod === "passkey"}
+                onSelect={() => handleConfirmationChange("passkey")}
               >
-                {passkeyRegistering ? (
-                  <Loader2 size={14} className="animate-spin mr-2" />
-                ) : (
-                  <Key size={14} className="mr-2" />
-                )}
-                {passkeyRegistered ? "Add another" : "Register passkey"}
-              </Button>
+                <p className="text-[11px] text-muted-foreground mt-2">
+                  Uses WebAuthn to authenticate with your device biometrics or security key. No server-side secrets stored.
+                </p>
+              </ConfirmMethodRow>
+
+              <ConfirmMethodRow
+                icon={Globe}
+                method="worldid"
+                title="World ID (Proof of Human)"
+                description="Cryptographic proof of unique human — strongest Sybil resistance"
+                badge={worldIdVerified
+                  ? <StatusBadge variant="safe">Verified</StatusBadge>
+                  : <StatusBadge variant="warning">Not verified</StatusBadge>
+                }
+                selected={confirmationMethod === "worldid"}
+                onSelect={() => handleConfirmationChange("worldid")}
+              >
+                <p className="text-[11px] text-muted-foreground mt-2">
+                  Requires a one-time scan with the Worldcoin app. Provides zero-knowledge proof of humanity without revealing identity.
+                </p>
+              </ConfirmMethodRow>
+
+              <ConfirmMethodRow
+                icon={Usb}
+                method="ledger"
+                title="Hardware wallet (Ledger)"
+                description="Sign confirmation on your Ledger device"
+                selected={confirmationMethod === "ledger"}
+                onSelect={() => handleConfirmationChange("ledger")}
+              >
+                <p className="text-[11px] text-muted-foreground mt-2">
+                  The transaction details are displayed on your Ledger screen. Physical button press confirms intent.
+                </p>
+              </ConfirmMethodRow>
+
+              <ConfirmMethodRow
+                icon={Type}
+                method="manual"
+                title="Manual approval"
+                description='Type "CONFIRM" in the dashboard — lowest security, no hardware needed'
+                selected={confirmationMethod === "manual"}
+                onSelect={() => handleConfirmationChange("manual")}
+              />
             </div>
 
-            {/* Status messages */}
-            <AnimatePresence mode="wait">
-              {!address && (
-                <motion.p
-                  key="no-wallet"
-                  initial={{ opacity: 0, y: -4 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -4 }}
-                  className="text-xs text-vanta-amber flex items-center gap-1.5"
-                >
-                  <AlertTriangle size={12} />
-                  Connect your wallet first to register a passkey
-                </motion.p>
-              )}
-              {!passkeySupported && address && (
-                <motion.p
-                  key="unsupported"
-                  initial={{ opacity: 0, y: -4 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -4 }}
-                  className="text-xs text-vanta-amber flex items-center gap-1.5"
-                >
-                  <AlertTriangle size={12} />
-                  WebAuthn is not supported in this browser. Use Chrome, Safari, or Edge on a device with biometrics.
-                </motion.p>
-              )}
-              {passkeyError && (
-                <motion.div
-                  key="error"
-                  initial={{ opacity: 0, y: -4 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -4 }}
-                  className="p-3 bg-vanta-red/10 border border-vanta-red/20 rounded-lg text-xs text-vanta-red"
-                >
-                  {passkeyError}
-                </motion.div>
-              )}
-              {passkeySuccess && (
-                <motion.div
-                  key="success"
-                  initial={{ opacity: 0, y: -4 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -4 }}
-                  className="p-3 bg-vanta-teal/10 border border-vanta-teal/20 rounded-lg text-xs text-vanta-teal flex items-center gap-2"
-                >
-                  <Check size={14} />
-                  Passkey registered successfully! You can now use Face ID / Touch ID to confirm transactions.
-                </motion.div>
-              )}
-            </AnimatePresence>
+            {saving && (
+              <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                <InfinityLoader size={12} />
+                Saving...
+              </div>
+            )}
 
-            {/* Registered passkey list */}
-            <AnimatePresence>
-              {passkeys.length > 0 && (
-                <motion.div
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: "auto" }}
-                  exit={{ opacity: 0, height: 0 }}
-                  className="space-y-2 overflow-hidden"
-                >
-                  {passkeys.map((pk, i) => (
-                    <motion.div
-                      key={pk.id}
-                      initial={{ opacity: 0, x: -8 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: i * 0.05 }}
-                      className="flex items-center gap-3 px-3 py-2.5 bg-vanta-elevated rounded-lg border border-border/50"
-                    >
-                      <ShieldCheck size={14} className="text-vanta-teal shrink-0" />
-                      <span className="font-mono text-xs text-foreground flex-1">
-                        {pk.alias || `Passkey ${i + 1}`}
-                      </span>
-                      {pk.createdAt && (
-                        <span className="text-[10px] text-vanta-text-muted">
-                          {new Date(pk.createdAt).toLocaleDateString()}
-                        </span>
-                      )}
-                    </motion.div>
-                  ))}
-                </motion.div>
-              )}
-            </AnimatePresence>
+            <div className="border-t border-border pt-4 mt-2">
+              <p className="text-xs text-muted-foreground mb-2">
+                <span className="text-foreground">Tier 3 escalation</span> — override for hard-blocked transactions
+              </p>
+              <select
+                value={tier3Escalation}
+                onChange={(e) => handleTier3Change(e.target.value)}
+                className="w-full bg-vanta-elevated border border-border text-foreground rounded-lg px-3 py-2 text-xs"
+              >
+                <option value="passkey-15">Passkey + 15 min delay</option>
+                <option value="worldid-24">World ID + 24h delay</option>
+                <option value="ledger-24">Ledger + 24h delay</option>
+              </select>
+            </div>
           </div>
-        </SettingsSection>
+        </CollapsibleSection>
 
         {/* ── Email Notifications ── */}
-        <SettingsSection title="Email Notifications">
-          <div className="space-y-4">
-            <p className="text-xs text-vanta-text-muted">
-              Get notified by email when an agent submits a Tier 2 or Tier 3
-              transaction. The email includes a link back to your dashboard.
+        <CollapsibleSection title="Email notifications">
+          <div className="space-y-3">
+            <p className="text-xs text-muted-foreground">
+              Get notified when an agent submits a Tier 2 or Tier 3 transaction.
             </p>
             <div className="flex gap-2">
               <div className="relative flex-1">
-                <Mail
-                  size={16}
-                  className="absolute left-3 top-1/2 -translate-y-1/2 text-vanta-text-muted"
-                />
+                <Mail size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
                 <Input
                   type="email"
                   placeholder="you@example.com"
                   value={email}
-                  onChange={(e) => {
-                    setEmail(e.target.value)
-                    setEmailSaved(false)
-                  }}
-                  className="pl-10 bg-vanta-elevated border-border-hover text-foreground placeholder:text-vanta-text-muted"
+                  onChange={(e) => { setEmail(e.target.value); setEmailSaved(false) }}
+                  className="pl-9 bg-vanta-elevated border-border text-foreground placeholder:text-muted-foreground text-xs h-9"
                 />
               </div>
               <Button
                 onClick={handleEmailSave}
                 disabled={saving || !email}
-                className="bg-vanta-teal text-vanta-bg hover:bg-vanta-teal/90 min-w-[80px]"
+                className="bg-[#00FFB2] text-black hover:bg-[#00FFB2]/90 h-9 min-w-[72px] text-xs"
               >
-                {saving ? (
-                  <Loader2 size={14} className="animate-spin" />
-                ) : emailSaved ? (
-                  <>
-                    <Check size={14} className="mr-1" /> Saved
-                  </>
-                ) : (
-                  "Save"
-                )}
+                {saving ? <InfinityLoader size={12} /> : emailSaved ? <><Check size={12} className="mr-1" />Saved</> : "Save"}
               </Button>
             </div>
             {user?.email && (
-              <p className="text-[11px] text-vanta-text-muted flex items-center gap-1">
-                <Check size={12} className="text-vanta-teal" />
-                Notifications will be sent to{" "}
-                <span className="text-foreground">{user.email}</span>
+              <p className="text-[10px] text-muted-foreground flex items-center gap-1">
+                <Check size={10} className="text-[#00FFB2]" />
+                Sending to <span className="text-foreground ml-1">{user.email}</span>
               </p>
             )}
           </div>
-        </SettingsSection>
-
-        {/* ── Confirmation Methods ── */}
-        <SettingsSection title="Confirmation method">
-          <div className="space-y-4">
-            <p className="text-xs text-vanta-text-muted mb-2">
-              How you verify Tier 2 transactions before they are signed
-            </p>
-            <div className="space-y-2">
-              <RadioOption
-                selected={confirmationMethod === "passkey"}
-                label="Passkey (Face ID / Touch ID)"
-                description="Biometric verification via WebAuthn — fastest and most secure"
-                recommended
-                badge={
-                  passkeyRegistered ? (
-                    <StatusBadge variant="safe">Ready</StatusBadge>
-                  ) : (
-                    <StatusBadge variant="warning">Not set up</StatusBadge>
-                  )
-                }
-                onSelect={() => handleConfirmationChange("passkey")}
-              />
-              <RadioOption
-                selected={confirmationMethod === "worldid"}
-                label="World ID (Proof of Human)"
-                description="Cryptographic proof of unique human — strongest Sybil resistance"
-                badge={
-                  worldIdVerified ? (
-                    <StatusBadge variant="safe">Verified</StatusBadge>
-                  ) : (
-                    <StatusBadge variant="warning">Not verified</StatusBadge>
-                  )
-                }
-                onSelect={() => handleConfirmationChange("worldid")}
-              />
-              <RadioOption
-                selected={confirmationMethod === "ledger"}
-                label="Hardware wallet (Ledger)"
-                description="Sign confirmation on your Ledger device"
-                onSelect={() => handleConfirmationChange("ledger")}
-              />
-              <RadioOption
-                selected={confirmationMethod === "manual"}
-                label="Manual approval"
-                description='Type "CONFIRM" in the dashboard — lowest security, no hardware needed'
-                onSelect={() => handleConfirmationChange("manual")}
-              />
-              {saving && (
-                <div className="flex items-center gap-2 text-xs text-vanta-text-muted">
-                  <Loader2 size={12} className="animate-spin" />
-                  Saving...
-                </div>
-              )}
-            </div>
-
-            <div className="h-px bg-border my-6" />
-
-            <h4 className="text-xs text-vanta-text-secondary mb-3">
-              Tier 3 escalation
-            </h4>
-            <p className="text-xs text-vanta-text-muted mb-2">
-              Tier 3 transactions are blocked by default. Choose what it takes to
-              override the block.
-            </p>
-            <select
-              value={tier3Escalation}
-              onChange={(e) => handleTier3Change(e.target.value)}
-              className="w-full bg-vanta-elevated border border-border-hover text-foreground rounded-lg px-3 py-2 text-sm"
-            >
-              <option value="passkey-15">Passkey + 15 min delay</option>
-              <option value="worldid-24">World ID + 24h delay</option>
-              <option value="ledger-24">Ledger + 24h delay</option>
-            </select>
-          </div>
-        </SettingsSection>
+        </CollapsibleSection>
 
         {/* ── Danger Zone ── */}
-        <SettingsSection title="Danger zone" danger>
+        <CollapsibleSection title="Danger zone" danger>
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <div>
-                <h4 className="text-sm text-foreground">Pause daemon</h4>
-                <p className="text-xs text-vanta-text-muted mt-0.5">
-                  Temporarily disable all security checks
-                </p>
+                <p className="text-sm text-foreground">Pause daemon</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Temporarily disable all security checks</p>
               </div>
-              <Button
-                variant="outline"
-                className="border-vanta-amber text-vanta-amber hover:bg-vanta-amber/10"
-              >
-                <AlertTriangle size={14} className="mr-2" />
-                Pause
+              <Button variant="outline" size="sm" className="border-amber-500/50 text-amber-400 hover:bg-amber-400/10 h-8 text-xs">
+                <AlertTriangle size={12} className="mr-1.5" /> Pause
               </Button>
             </div>
-
             <div className="h-px bg-border" />
-
             <div className="flex items-center justify-between">
               <div>
-                <h4 className="text-sm text-foreground">
-                  Disconnect all agents
-                </h4>
-                <p className="text-xs text-vanta-text-muted mt-0.5">
-                  Remove all connected AI agents
-                </p>
+                <p className="text-sm text-foreground">Disconnect all agents</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Remove all connected AI agents</p>
               </div>
-              <Button
-                variant="outline"
-                className="border-vanta-red text-vanta-red hover:bg-vanta-red/10"
-              >
+              <Button variant="outline" size="sm" className="border-red-500/50 text-red-400 hover:bg-red-400/10 h-8 text-xs">
                 Disconnect all
               </Button>
             </div>
           </div>
-        </SettingsSection>
+        </CollapsibleSection>
+
       </div>
     </DashboardLayout>
   )

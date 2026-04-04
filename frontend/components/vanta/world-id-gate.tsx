@@ -12,7 +12,6 @@ import {
   Shield,
   CheckCircle,
   AlertTriangle,
-  Loader2,
   Sparkles,
   ShieldCheck,
   Eye,
@@ -21,7 +20,7 @@ import {
   Clock,
   Hash,
 } from 'lucide-react';
-import { VantaSpinner } from '@/components/vanta/loader';
+import { InfinityLoader } from '@/components/ui/loader-13';
 import { Button } from '@/components/ui/button';
 import { StatusBadge } from '@/components/vanta/status-badge';
 import { useWorldId } from '@/hooks/useWorldId';
@@ -104,7 +103,7 @@ export function WorldIdGate({ address, compact, onVerified }: WorldIdGateProps) 
   if (loading) {
     return (
       <div className="flex items-center gap-2 text-xs text-vanta-text-muted">
-        <VantaSpinner size={14} />
+        <InfinityLoader size={14} />
         Checking World ID status...
       </div>
     );
@@ -130,7 +129,7 @@ export function WorldIdGate({ address, compact, onVerified }: WorldIdGateProps) 
           className="bg-gradient-to-r from-[#191C20] to-[#313640] text-white hover:from-[#2a2d32] hover:to-[#3d4149] border border-white/10"
         >
           {loadingRp || verifying ? (
-            <Loader2 size={14} className="animate-spin mr-2" />
+            <InfinityLoader size={14} className="mr-2" />
           ) : (
             <Globe size={14} className="mr-2" />
           )}
@@ -224,7 +223,7 @@ export function WorldIdGate({ address, compact, onVerified }: WorldIdGateProps) 
             )}
           >
             {loadingRp || verifying ? (
-              <Loader2 size={14} className="animate-spin mr-2" />
+              <InfinityLoader size={14} className="mr-2" />
             ) : (
               <Globe size={14} className="mr-2" />
             )}

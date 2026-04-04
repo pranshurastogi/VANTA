@@ -99,6 +99,152 @@ export const mockTransactions: Transaction[] = [
       ]
     }
   },
+  {
+    id: "5",
+    status: "approved",
+    description: "Deposit 500 USDC to Aave V3",
+    agent: "DeFi manager",
+    amount: "$500.00",
+    amountUsd: 500,
+    time: "5h ago",
+    tier: "auto",
+    to: "Aave V3 Pool",
+    from: "0x1a2b...9f3e",
+    network: "Ethereum Mainnet",
+    gas: "$3.10",
+    contractVerified: true,
+    aiAssessment: {
+      riskScore: 4,
+      riskLevel: "low",
+      checks: [
+        { label: "Aave V3 Pool is a verified, whitelisted protocol", passed: true },
+        { label: "Standard supply() calldata, no anomaly detected", passed: true },
+        { label: "Amount within configured daily limit", passed: true },
+        { label: "No PII in calldata", passed: true },
+      ]
+    }
+  },
+  {
+    id: "6",
+    status: "approved",
+    description: "Swap 0.05 WETH → USDC on 1inch",
+    agent: "Trading bot",
+    amount: "$118.40",
+    amountUsd: 118.40,
+    time: "6h ago",
+    tier: "auto",
+    to: "1inch Router V5",
+    from: "0x1a2b...9f3e",
+    network: "Ethereum Mainnet",
+    gas: "$2.70",
+    contractVerified: true,
+    aiAssessment: {
+      riskScore: 6,
+      riskLevel: "low",
+      checks: [
+        { label: "1inch Router V5 is allowlisted", passed: true },
+        { label: "Swap amount within daily limit", passed: true },
+        { label: "No unusual selectors in calldata", passed: true },
+      ]
+    }
+  },
+  {
+    id: "7",
+    status: "confirmed",
+    description: "Borrow 1000 USDC from Compound",
+    agent: "DeFi manager",
+    amount: "$1,000.00",
+    amountUsd: 1000,
+    time: "8h ago",
+    tier: "confirmed",
+    to: "Compound cUSDC",
+    from: "0x1a2b...9f3e",
+    network: "Ethereum Mainnet",
+    gas: "$5.20",
+    contractVerified: true,
+    aiAssessment: {
+      riskScore: 52,
+      riskLevel: "medium",
+      checks: [
+        { label: "Compound cUSDC is an approved protocol", passed: true },
+        { label: "Amount above $500 confirmation threshold", passed: false },
+        { label: "First borrow from this contract this week", passed: false },
+        { label: "No unusual function selectors", passed: true },
+      ]
+    }
+  },
+  {
+    id: "8",
+    status: "blocked",
+    description: "Transfer to sanctioned address",
+    agent: "Trading bot",
+    amount: "$340.00",
+    amountUsd: 340,
+    time: "Yesterday",
+    tier: "blocked",
+    to: "0x7f9e...2d4c",
+    from: "0x1a2b...9f3e",
+    network: "Ethereum Mainnet",
+    gas: "$1.90",
+    contractVerified: false,
+    aiAssessment: {
+      riskScore: 98,
+      riskLevel: "high",
+      checks: [
+        { label: "Destination found in OFAC sanctions list", passed: false },
+        { label: "Address flagged in ChainAbuse database", passed: false },
+        { label: "Hard-blocked: sanctioned counterparty", passed: false },
+      ]
+    }
+  },
+  {
+    id: "9",
+    status: "approved",
+    description: "Stake 0.5 ETH to Lido",
+    agent: "DeFi manager",
+    amount: "$1,190.00",
+    amountUsd: 1190,
+    time: "Yesterday",
+    tier: "confirmed",
+    to: "Lido stETH",
+    from: "0x1a2b...9f3e",
+    network: "Ethereum Mainnet",
+    gas: "$4.00",
+    contractVerified: true,
+    aiAssessment: {
+      riskScore: 38,
+      riskLevel: "medium",
+      checks: [
+        { label: "Lido stETH contract is verified", passed: true },
+        { label: "Amount above $1,000 threshold — confirmation required", passed: false },
+        { label: "Standard submit() calldata", passed: true },
+        { label: "No PII detected", passed: true },
+      ]
+    }
+  },
+  {
+    id: "10",
+    status: "approved",
+    description: "Gas top-up to relayer",
+    agent: "Trading bot",
+    amount: "$12.00",
+    amountUsd: 12,
+    time: "2 days ago",
+    tier: "auto",
+    to: "0x4d5e...7a8b",
+    from: "0x1a2b...9f3e",
+    network: "Ethereum Mainnet",
+    gas: "$0.80",
+    contractVerified: false,
+    aiAssessment: {
+      riskScore: 1,
+      riskLevel: "low",
+      checks: [
+        { label: "Address is in your whitelist (Coinbase)", passed: true },
+        { label: "Amount well under per-transaction limit", passed: true },
+      ]
+    }
+  },
 ]
 
 export const mockRules: Rule[] = [

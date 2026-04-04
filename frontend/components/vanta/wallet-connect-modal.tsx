@@ -1,7 +1,8 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Mail, Loader2, ChevronLeft, ArrowRight, Wallet } from 'lucide-react';
+import { X, Mail, ChevronLeft, ArrowRight, Wallet } from 'lucide-react';
+import { InfinityLoader } from '@/components/ui/loader-13';
 import {
   getAvailableWalletProvidersData,
   connectAndVerifyWithWalletProvider,
@@ -250,7 +251,7 @@ export function WalletConnectModal() {
                       disabled={loading || !email.trim()}
                       className="w-full bg-vanta-teal text-vanta-bg hover:bg-vanta-teal/90"
                     >
-                      {loading ? <Loader2 size={16} className="animate-spin" /> : 'Send code'}
+                      {loading ? <InfinityLoader size={16} /> :'Send code'}
                     </Button>
                   </motion.div>
                 )}
@@ -283,7 +284,7 @@ export function WalletConnectModal() {
                       disabled={loading || otp.length !== 6}
                       className="w-full bg-vanta-teal text-vanta-bg hover:bg-vanta-teal/90"
                     >
-                      {loading ? <Loader2 size={16} className="animate-spin" /> : 'Verify & connect'}
+                      {loading ? <InfinityLoader size={16} /> :'Verify & connect'}
                     </Button>
                     <button
                       onClick={handleSendOTP}
@@ -343,7 +344,7 @@ function ProviderButton({
         {sublabel && <p className="text-[10px] text-vanta-text-muted mt-0.5">{sublabel}</p>}
       </div>
       {loading ? (
-        <Loader2 size={14} className="text-vanta-text-muted animate-spin" />
+        <InfinityLoader size={14} />
       ) : (
         <ArrowRight size={14} className="text-vanta-text-muted" />
       )}

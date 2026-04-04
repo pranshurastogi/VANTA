@@ -6,13 +6,13 @@ import {
   Bluetooth,
   CheckCircle,
   AlertTriangle,
-  Loader2,
   ShieldCheck,
   Unplug,
   MonitorSmartphone,
   Info,
   Wallet,
 } from 'lucide-react';
+import { InfinityLoader } from '@/components/ui/loader-13';
 import { Button } from '@/components/ui/button';
 import { StatusBadge } from '@/components/vanta/status-badge';
 import { useLedger } from '@/hooks/useLedger';
@@ -185,7 +185,7 @@ export function LedgerGate({ onConnected }: LedgerGateProps) {
         >
           {connecting ? (
             <>
-              <Loader2 size={14} className="animate-spin mr-2" />
+              <InfinityLoader size={14} className="mr-2" />
               Connecting…
             </>
           ) : (

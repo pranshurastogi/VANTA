@@ -1,13 +1,13 @@
-import { Loader2Icon } from 'lucide-react'
-
+import { InfinityLoader } from '@/components/ui/loader-13'
 import { cn } from '@/lib/utils'
 
-function Spinner({ className, ...props }: React.ComponentProps<'svg'>) {
+function Spinner({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
   return (
-    <Loader2Icon
+    <InfinityLoader
       role="status"
       aria-label="Loading"
-      className={cn('size-4 animate-spin', className)}
+      size={16}
+      className={cn(className)}
       {...props}
     />
   )

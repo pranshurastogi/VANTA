@@ -14,7 +14,7 @@ import {
   Copy,
   Check,
 } from "lucide-react"
-import { VantaWordmark } from "./logo"
+import { VantaLogo } from "./logo"
 import { cn } from "@/lib/utils"
 import { useDynamic } from "@/lib/dynamic/context"
 import { useState } from "react"
@@ -56,15 +56,36 @@ export function Sidebar() {
 
   return (
     <aside className="fixed left-0 top-0 h-full w-60 bg-vanta-bg border-r border-border flex flex-col z-50">
-      {/* Logo */}
-      <div className="p-6 pb-4">
-        <Link href="/dashboard" className="inline-block rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-vanta-teal">
-          <VantaWordmark />
-        </Link>
-      </div>
+      {/* Logo section */}
+      <Link
+        href="/dashboard"
+        className="group relative flex flex-col items-center gap-1.5 px-4 py-5 border-b border-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-vanta-teal focus-visible:ring-inset overflow-hidden"
+      >
+        {/* Ambient glow behind logo */}
+        <div className="pointer-events-none absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500"
+          style={{ background: "radial-gradient(ellipse 80% 60% at 50% 30%, rgba(0,255,178,0.06), transparent 70%)" }}
+        />
+
+        <div className="relative">
+          {/* Subtle halo ring */}
+          <div className="absolute inset-0 rounded-full blur-xl opacity-30 group-hover:opacity-50 transition-opacity"
+            style={{ background: "#00FFB2", transform: "scale(1.8)" }}
+          />
+          <VantaLogo size={36} className="relative opacity-90 group-hover:opacity-100 transition-opacity" />
+        </div>
+
+        <div className="flex flex-col items-center gap-0.5">
+          <span className="text-[13px] font-semibold tracking-[0.22em] text-foreground leading-none">
+            VANTA
+          </span>
+          <span className="text-[9px] tracking-[0.18em] text-muted-foreground uppercase leading-none">
+            wallet daemon
+          </span>
+        </div>
+      </Link>
 
       {/* Network badge */}
-      <div className="mx-4 mb-3 flex items-center gap-2 px-3 py-1.5 bg-vanta-elevated/60 rounded-lg border border-border/50">
+      <div className="mx-4 mt-3 mb-1 flex items-center gap-2 px-3 py-1.5 bg-vanta-elevated/60 rounded-lg border border-border/50">
         <PulsingDot />
         <span className="text-[10px] font-mono text-vanta-text-muted">Ethereum Sepolia</span>
         <span className="ml-auto text-[9px] px-1.5 py-0.5 rounded-full bg-vanta-teal/10 text-vanta-teal font-medium">testnet</span>

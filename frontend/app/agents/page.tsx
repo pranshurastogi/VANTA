@@ -13,7 +13,6 @@ import {
   Clock,
   Copy,
   Terminal,
-  Loader2,
   Zap,
   Skull,
   ArrowRightLeft,
@@ -25,6 +24,7 @@ import {
   ChevronDown,
   RefreshCw,
 } from "lucide-react"
+import { InfinityLoader } from "@/components/ui/loader-13"
 import { DashboardLayout } from "@/components/vanta/dashboard-layout"
 import { Switch } from "@/components/ui/switch"
 import { Input } from "@/components/ui/input"
@@ -402,6 +402,7 @@ const TIER_COLORS = {
     bg: "bg-emerald-500/10",
     border: "border-emerald-500/30",
     text: "text-emerald-400",
+    dot: "bg-emerald-400",
     label: "Tier 1 · Auto-Approved",
     icon: ShieldCheck,
   },
@@ -409,6 +410,7 @@ const TIER_COLORS = {
     bg: "bg-vanta-amber/10",
     border: "border-vanta-amber/30",
     text: "text-vanta-amber",
+    dot: "bg-amber-400",
     label: "Tier 2 · Needs Confirmation",
     icon: Clock,
   },
@@ -416,10 +418,11 @@ const TIER_COLORS = {
     bg: "bg-vanta-red/10",
     border: "border-vanta-red/30",
     text: "text-vanta-red",
+    dot: "bg-red-400",
     label: "Tier 3 · Blocked",
     icon: XCircle,
   },
-} as const
+}
 
 const SEPOLIA_EXPLORER = "https://sepolia.etherscan.io"
 
@@ -790,210 +793,176 @@ function AgentSimulator() {
         </div>
       </div>
 
-      <div className="p-5 space-y-5">
+      <div className="p-0">
         {!address ? (
-          <div className="text-center py-8">
-            <Bot size={32} className="mx-auto mb-3 text-vanta-text-muted" />
+          <div className="text-center py-12 px-5">
+            <Bot size={28} className="mx-auto mb-3 text-vanta-text-muted" />
             <p className="text-sm text-vanta-text-muted">Connect your wallet to simulate transactions</p>
             <p className="text-[11px] text-vanta-text-muted mt-1">All simulations run on Sepolia testnet</p>
           </div>
         ) : (
-          <>
-            {/* Category filter tabs */}
-            <div className="flex items-center gap-2 overflow-x-auto pb-1">
-              <button
-                onClick={() => setActiveCategory("all")}
-                className={cn(
-                  "px-3 py-1.5 rounded-lg text-[11px] font-medium border transition-colors shrink-0",
-                  activeCategory === "all"
-                    ? "bg-vanta-elevated border-vanta-teal/30 text-vanta-teal"
-                    : "border-border text-vanta-text-muted hover:text-foreground hover:border-border-hover"
-                )}
-              >
-                All ({presets.length})
-              </button>
-              {(Object.entries(CATEGORY_META) as [Category, typeof CATEGORY_META.safe][]).map(([key, meta]) => {
-                const Icon = meta.icon
-                const count = presets.filter((p) => p.category === key).length
-                return (
-                  <button
-                    key={key}
-                    onClick={() => setActiveCategory(key)}
-                    className={cn(
-                      "px-3 py-1.5 rounded-lg text-[11px] font-medium border transition-colors shrink-0 flex items-center gap-1.5",
-                      activeCategory === key
-                        ? `${meta.color} border-current/20`
-                        : "border-border text-vanta-text-muted hover:text-foreground hover:border-border-hover"
-                    )}
-                  >
-                    <Icon size={12} />
-                    {meta.label} ({count})
-                  </button>
-                )
-              })}
-            </div>
+          <div className="grid lg:grid-cols-[280px_1fr] divide-y lg:divide-y-0 lg:divide-x divide-border">
 
-            {/* Category description */}
-            {activeCategory !== "all" && (
-              <p className="text-[11px] text-vanta-text-muted -mt-2">
-                {CATEGORY_META[activeCategory].description}
-              </p>
-            )}
+            {/* ── Left: Preset library ── */}
+            <div className="p-4 space-y-3">
+              <div className="flex items-center gap-2 overflow-x-auto pb-0.5 scrollbar-none">
+                <button
+                  onClick={() => setActiveCategory("all")}
+                  className={cn(
+                    "px-2.5 py-1 rounded-lg text-[10px] font-medium border transition-colors shrink-0",
+                    activeCategory === "all"
+                      ? "bg-vanta-elevated border-vanta-teal/30 text-vanta-teal"
+                      : "border-border text-vanta-text-muted hover:text-foreground"
+                  )}
+                >
+                  All
+                </button>
+                {(Object.entries(CATEGORY_META) as [Category, typeof CATEGORY_META.safe][]).map(([key, meta]) => {
+                  const Icon = meta.icon
+                  return (
+                    <button
+                      key={key}
+                      onClick={() => setActiveCategory(key)}
+                      className={cn(
+                        "px-2.5 py-1 rounded-lg text-[10px] font-medium border transition-colors shrink-0 flex items-center gap-1",
+                        activeCategory === key
+                          ? `${meta.color} border-current/20`
+                          : "border-border text-vanta-text-muted hover:text-foreground"
+                      )}
+                    >
+                      <Icon size={10} />
+                      {meta.label}
+                    </button>
+                  )
+                })}
+              </div>
 
-            {/* Preset grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-              {filteredPresets.map((p) => {
-                const expected = presetPolicyTier[p.label]
-                const previewTier = expected?.tier ?? p.expectedTier
-                const tierC = TIER_COLORS[previewTier]
-                return (
-                  <button
-                    key={p.label}
-                    onClick={() => applyPreset(p)}
-                    className="flex flex-col items-start gap-1.5 px-3 py-2.5 bg-vanta-elevated border border-border rounded-lg hover:border-vanta-teal/40 transition-all text-left group"
-                  >
-                    <div className="flex items-center gap-1.5 w-full">
-                      <span className={cn("px-1.5 py-0.5 rounded text-[9px] font-medium border", CATEGORY_META[p.category].color)}>
-                        {p.category}
-                      </span>
-                      <span className={cn("ml-auto px-1.5 py-0.5 rounded text-[9px] font-medium", tierC.bg, tierC.text)}>
+              <div className="space-y-1">
+                {filteredPresets.map((p) => {
+                  const expected = presetPolicyTier[p.label]
+                  const previewTier = expected?.tier ?? p.expectedTier
+                  const tierC = TIER_COLORS[previewTier]
+                  const isActive = to === p.to && agentName === p.agentName
+                  return (
+                    <button
+                      key={p.label}
+                      onClick={() => applyPreset(p)}
+                      className={cn(
+                        "w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg border transition-all text-left group",
+                        isActive
+                          ? "bg-vanta-elevated border-vanta-teal/30"
+                          : "border-transparent hover:border-border hover:bg-vanta-elevated/50"
+                      )}
+                    >
+                      <div className={cn("w-1.5 h-1.5 rounded-full shrink-0", tierC.dot ?? "bg-muted-foreground")} />
+                      <div className="flex-1 min-w-0">
+                        <p className={cn("text-[11px] font-medium leading-tight truncate transition-colors", isActive ? "text-vanta-teal" : "text-foreground group-hover:text-vanta-teal")}>
+                          {p.label}
+                        </p>
+                        {p.attackType && (
+                          <p className="text-[9px] text-vanta-red mt-0.5 flex items-center gap-0.5">
+                            <Bug size={8} />{p.attackType}
+                          </p>
+                        )}
+                      </div>
+                      <span className={cn("text-[9px] font-mono px-1.5 py-0.5 rounded shrink-0", tierC.bg, tierC.text)}>
                         T{previewTier}
                       </span>
-                    </div>
-                    <span className="text-[12px] text-foreground leading-tight font-medium group-hover:text-vanta-teal transition-colors">
-                      {p.label}
-                    </span>
-                    <span className="text-[10px] text-vanta-text-muted leading-tight">{p.description}</span>
-                    <span className="text-[9px] text-vanta-text-secondary">
-                      Policy preview: {expected?.reason ?? "Using baseline preset behavior"}
-                    </span>
-                    {p.attackType && (
-                      <span className="flex items-center gap-1 text-[9px] text-vanta-red mt-0.5">
-                        <Bug size={9} />
-                        {p.attackType}
-                      </span>
-                    )}
-                    <span className="text-[9px] text-vanta-text-muted font-mono">
-                      Agent: {p.agentName}
-                    </span>
-                  </button>
-                )
-              })}
+                    </button>
+                  )
+                })}
+              </div>
             </div>
 
-            {/* Advanced fields toggle */}
-            <button
-              onClick={() => setShowAdvanced(!showAdvanced)}
-              className="flex items-center gap-2 text-xs text-vanta-text-muted hover:text-foreground transition-colors"
-            >
-              <ChevronDown size={14} className={cn("transition-transform", showAdvanced && "rotate-180")} />
-              {showAdvanced ? "Hide" : "Show"} transaction fields
-            </button>
+            {/* ── Right: Form + result ── */}
+            <div className="p-4 space-y-4">
 
-            {/* Advanced input fields */}
-            <AnimatePresence>
-              {showAdvanced && (
-                <motion.div
-                  initial={{ height: 0, opacity: 0 }}
-                  animate={{ height: "auto", opacity: 1 }}
-                  exit={{ height: 0, opacity: 0 }}
-                  className="overflow-hidden space-y-3"
-                >
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="text-[11px] text-vanta-text-muted mb-1 block">Agent name</label>
-                      <Input
-                        placeholder="demo-trading-bot"
-                        value={agentName}
-                        onChange={(e) => setAgentName(e.target.value)}
-                        className="bg-vanta-elevated border-border-hover text-foreground text-xs h-9"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-[11px] text-vanta-text-muted mb-1 block">From</label>
-                      <div className="font-mono text-[10px] text-vanta-text-secondary bg-vanta-elevated border border-border rounded-lg px-3 py-2.5 truncate flex items-center gap-1">
-                        {shortenAddr(address)}
-                        <a href={`${SEPOLIA_EXPLORER}/address/${address}`} target="_blank" rel="noopener noreferrer" className="text-vanta-text-muted hover:text-vanta-teal">
-                          <ExternalLink size={10} />
-                        </a>
-                      </div>
-                    </div>
-                  </div>
-
+              {/* Compact form */}
+              <div className="space-y-2.5">
+                <div className="grid grid-cols-2 gap-2">
                   <div>
-                    <label className="text-[11px] text-vanta-text-muted mb-1 block">To address</label>
+                    <label className="text-[10px] text-vanta-text-muted mb-1 block">Agent</label>
                     <Input
-                      placeholder="0x…"
-                      value={to}
-                      onChange={(e) => setTo(e.target.value)}
-                      className="bg-vanta-elevated border-border-hover text-foreground font-mono text-xs h-9"
+                      placeholder="demo-trading-bot"
+                      value={agentName}
+                      onChange={(e) => setAgentName(e.target.value)}
+                      className="bg-vanta-elevated border-border text-foreground text-xs h-8"
                     />
                   </div>
-
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="text-[11px] text-vanta-text-muted mb-1 block">ETH amount</label>
-                      <Input
-                        placeholder="0.0"
-                        value={eth}
-                        onChange={(e) => setEth(e.target.value)}
-                        className="bg-vanta-elevated border-border-hover text-foreground font-mono text-xs h-9"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-[11px] text-vanta-text-muted mb-1 block">≈ USD</label>
-                      <div className="font-mono text-xs text-vanta-text-muted bg-vanta-elevated border border-border rounded-lg px-3 py-2 h-9 flex items-center">
-                        ${(parseFloat(eth || "0") * 2400).toFixed(2)}
-                      </div>
-                    </div>
-                  </div>
-
                   <div>
-                    <label className="text-[11px] text-vanta-text-muted mb-1 block">Calldata (hex)</label>
-                    <textarea
-                      placeholder="0x…"
-                      value={calldata}
-                      onChange={(e) => setCalldata(e.target.value)}
-                      rows={2}
-                      className="w-full bg-vanta-elevated border border-border-hover text-foreground font-mono text-[10px] rounded-lg px-3 py-2 resize-none focus:outline-none focus:ring-1 focus:ring-vanta-teal"
+                    <label className="text-[10px] text-vanta-text-muted mb-1 block">From</label>
+                    <div className="font-mono text-[10px] text-vanta-text-secondary bg-vanta-elevated border border-border rounded-lg px-3 h-8 flex items-center gap-1 truncate">
+                      {shortenAddr(address)}
+                      <a href={`${SEPOLIA_EXPLORER}/address/${address}`} target="_blank" rel="noopener noreferrer" className="text-vanta-text-muted hover:text-vanta-teal shrink-0">
+                        <ExternalLink size={9} />
+                      </a>
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-[10px] text-vanta-text-muted mb-1 block">To address</label>
+                  <Input
+                    placeholder="0x…"
+                    value={to}
+                    onChange={(e) => setTo(e.target.value)}
+                    className="bg-vanta-elevated border-border text-foreground font-mono text-xs h-8"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-[10px] text-vanta-text-muted mb-1 block">ETH amount</label>
+                    <Input
+                      placeholder="0.0"
+                      value={eth}
+                      onChange={(e) => setEth(e.target.value)}
+                      className="bg-vanta-elevated border-border text-foreground font-mono text-xs h-8"
                     />
                   </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-
-            {/* Selected transaction summary (when preset applied but fields hidden) */}
-            {to && !showAdvanced && (
-              <div className="flex items-center gap-3 px-3 py-2.5 bg-vanta-elevated border border-border rounded-lg text-xs">
-                <Zap size={14} className="text-vanta-teal shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <span className="text-foreground">{eth ? `${eth} ETH` : "Contract call"}</span>
-                  <span className="text-vanta-text-muted"> → </span>
-                  <span className="font-mono text-vanta-text-secondary">{shortenAddr(to)}</span>
-                  {calldata && <span className="text-vanta-text-muted"> + calldata</span>}
+                  <div>
+                    <label className="text-[10px] text-vanta-text-muted mb-1 block">≈ USD</label>
+                    <div className="font-mono text-xs text-vanta-text-muted bg-vanta-elevated border border-border rounded-lg px-3 h-8 flex items-center">
+                      ${(parseFloat(eth || "0") * 2400).toFixed(2)}
+                    </div>
+                  </div>
                 </div>
-                <span className="text-[10px] text-vanta-text-muted font-mono">{agentName}</span>
-              </div>
-            )}
 
-            {/* Submit button */}
-            <Button
-              onClick={simulate}
-              disabled={loading || !to}
-              className="w-full bg-gradient-to-r from-vanta-teal to-emerald-500 text-vanta-bg hover:from-vanta-teal/90 hover:to-emerald-500/90 h-11 text-sm font-medium"
-            >
-              {loading ? (
-                <>
-                  <Loader2 size={16} className="animate-spin mr-2" />
-                  Processing through VANTA pipeline…
-                </>
-              ) : (
-                <>
-                  <Play size={16} className="mr-2" />
-                  Simulate transaction
-                </>
-              )}
-            </Button>
+                <button
+                  onClick={() => setShowAdvanced(!showAdvanced)}
+                  className="flex items-center gap-1.5 text-[10px] text-vanta-text-muted hover:text-foreground transition-colors"
+                >
+                  <ChevronDown size={12} className={cn("transition-transform", showAdvanced && "rotate-180")} />
+                  {showAdvanced ? "Hide" : "Show"} calldata
+                </button>
+
+                <AnimatePresence>
+                  {showAdvanced && (
+                    <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
+                      <textarea
+                        placeholder="0x…"
+                        value={calldata}
+                        onChange={(e) => setCalldata(e.target.value)}
+                        rows={2}
+                        className="w-full bg-vanta-elevated border border-border text-foreground font-mono text-[10px] rounded-lg px-3 py-2 resize-none focus:outline-none focus:ring-1 focus:ring-vanta-teal"
+                      />
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+
+              {/* Submit */}
+              <Button
+                onClick={simulate}
+                disabled={loading || !to}
+                className="w-full bg-gradient-to-r from-vanta-teal to-emerald-500 text-vanta-bg hover:from-vanta-teal/90 hover:to-emerald-500/90 h-9 text-xs font-medium"
+              >
+                {loading ? (
+                  <><InfinityLoader size={14} className="mr-2" />Processing…</>
+                ) : (
+                  <><Play size={13} className="mr-2" />Simulate transaction</>
+                )}
+              </Button>
 
             {/* Live simulation steps */}
             <AnimatePresence>
@@ -1019,7 +988,7 @@ function AgentSimulator() {
                       >
                         <div className="mt-0.5 shrink-0">
                           {step.status === "pending" && <div className="w-3.5 h-3.5 rounded-full border border-border" />}
-                          {step.status === "running" && <Loader2 size={14} className="animate-spin text-vanta-teal" />}
+                          {step.status === "running" && <InfinityLoader size={14} />}
                           {step.status === "done" && <Check size={14} className="text-emerald-400" />}
                           {step.status === "error" && <XCircle size={14} className="text-vanta-red" />}
                         </div>
@@ -1253,7 +1222,8 @@ function AgentSimulator() {
                 </div>
               </div>
             )}
-          </>
+            </div>
+          </div>
         )}
       </div>
 
