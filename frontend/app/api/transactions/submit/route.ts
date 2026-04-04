@@ -77,7 +77,7 @@ export async function POST(req: NextRequest) {
       value: String(value),
       value_usd: txValueUsd,
       calldata: data ?? null,
-      chain_id: chainId ?? 1,
+      chain_id: chainId ?? 11155111,
       agent_id: agentId ?? null,
       tier: finalTier,
       status,

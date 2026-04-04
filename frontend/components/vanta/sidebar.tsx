@@ -9,11 +9,15 @@ import {
   Shield,
   ScanEye,
   Bot,
-  Settings
+  Settings,
+  LogOut,
+  Copy,
+  Check,
 } from "lucide-react"
-import { useDynamicContext } from "@dynamic-labs/sdk-react-core"
 import { VantaWordmark } from "./logo"
 import { cn } from "@/lib/utils"
+import { useDynamic } from "@/lib/dynamic/context"
+import { useState } from "react"
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -35,20 +39,35 @@ function PulsingDot({ className = "" }: { className?: string }) {
 
 export function Sidebar() {
   const pathname = usePathname()
-  const { primaryWallet, setShowAuthFlow } = useDynamicContext()
+  const { wallet, isConnected, connect, disconnect } = useDynamic()
+  const [copied, setCopied] = useState(false)
 
-  const address = primaryWallet?.address
+  const address = wallet?.address
   const shortAddress = address
     ? `${address.slice(0, 6)}...${address.slice(-4)}`
     : null
 
+  const handleCopy = () => {
+    if (!address) return
+    navigator.clipboard.writeText(address)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
   return (
     <aside className="fixed left-0 top-0 h-full w-60 bg-vanta-bg border-r border-border flex flex-col z-50">
       {/* Logo */}
-      <div className="p-6">
+      <div className="p-6 pb-4">
         <Link href="/dashboard" className="inline-block rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-vanta-teal">
           <VantaWordmark />
         </Link>
+      </div>
+
+      {/* Network badge */}
+      <div className="mx-4 mb-3 flex items-center gap-2 px-3 py-1.5 bg-vanta-elevated/60 rounded-lg border border-border/50">
+        <PulsingDot />
+        <span className="text-[10px] font-mono text-vanta-text-muted">Ethereum Sepolia</span>
+        <span className="ml-auto text-[9px] px-1.5 py-0.5 rounded-full bg-vanta-teal/10 text-vanta-teal font-medium">testnet</span>
       </div>
 
       {/* Navigation */}
@@ -86,24 +105,50 @@ export function Sidebar() {
       </nav>
 
       {/* Wallet Card */}
-      <div className="p-4 mx-3 mb-4 bg-vanta-surface rounded-xl border border-border">
-        {shortAddress ? (
-          <>
-            <div className="flex items-center gap-2 mb-2">
-              <PulsingDot />
-              <span className="text-[11px] text-vanta-text-secondary">Connected</span>
+      <div className="p-3 mx-3 mb-4">
+        {isConnected && shortAddress ? (
+          <div className="bg-vanta-surface border border-border rounded-xl p-3">
+            {/* Status row */}
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2">
+                <PulsingDot />
+                <span className="text-[11px] text-vanta-text-secondary">Connected</span>
+              </div>
+              {/* Copy address */}
+              <button
+                onClick={handleCopy}
+                title="Copy address"
+                className="text-vanta-text-muted hover:text-foreground transition-colors p-1 rounded"
+              >
+                {copied ? <Check size={12} className="text-vanta-teal" /> : <Copy size={12} />}
+              </button>
             </div>
-            <div className="font-mono text-[13px] text-vanta-text-muted mb-2">
+
+            {/* Address */}
+            <div className="font-mono text-[13px] text-foreground mb-2.5">
               {shortAddress}
             </div>
-            <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-vanta-teal/10 text-vanta-teal text-[10px]">
-              World ID ✓
+
+            {/* Bottom row */}
+            <div className="flex items-center justify-between">
+              <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-vanta-teal/10 text-vanta-teal text-[10px]">
+                Sepolia
+              </div>
+              {/* Disconnect */}
+              <button
+                onClick={disconnect}
+                title="Disconnect wallet"
+                className="flex items-center gap-1 text-[11px] text-vanta-text-muted hover:text-vanta-red transition-colors"
+              >
+                <LogOut size={12} />
+                Disconnect
+              </button>
             </div>
-          </>
+          </div>
         ) : (
           <button
-            onClick={() => setShowAuthFlow(true)}
-            className="w-full text-left"
+            onClick={connect}
+            className="w-full bg-vanta-surface border border-border rounded-xl p-3 text-left hover:border-vanta-teal/40 transition-colors group"
           >
             <div className="flex items-center gap-2 mb-1">
               <span className="relative flex h-1.5 w-1.5">
@@ -111,7 +156,7 @@ export function Sidebar() {
               </span>
               <span className="text-[11px] text-vanta-text-muted">Not connected</span>
             </div>
-            <span className="text-[12px] text-vanta-teal hover:underline">
+            <span className="text-[12px] text-vanta-teal group-hover:underline transition-all">
               Connect wallet →
             </span>
           </button>
@@ -123,7 +168,7 @@ export function Sidebar() {
 
 export function MobileNav() {
   const pathname = usePathname()
-  const mobileNavItems = navItems.slice(0, 5) // Exclude settings for mobile
+  const mobileNavItems = navItems.slice(0, 5)
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 h-16 bg-vanta-bg border-t border-border md:hidden z-50">

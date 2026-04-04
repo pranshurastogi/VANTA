@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { useDynamicContext } from '@dynamic-labs/sdk-react-core';
 import { supabase } from '@/lib/supabase/client';
+import { useDynamic } from '@/lib/dynamic/context';
 
 export interface VantaUser {
   id: string;
@@ -12,12 +12,12 @@ export interface VantaUser {
 }
 
 export function useUser() {
-  const { primaryWallet } = useDynamicContext();
+  const { wallet } = useDynamic();
   const [user, setUser] = useState<VantaUser | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const address = primaryWallet?.address;
+    const address = wallet?.address;
     if (!address) {
       setUser(null);
       setLoading(false);
@@ -38,7 +38,7 @@ export function useUser() {
           return;
         }
 
-        // User not found (PGRST116 = no rows) — auto-register
+        // User not found (PGRST116) — auto-register
         if (error?.code === 'PGRST116' || !data) {
           try {
             const res = await fetch('/api/auth/register', {
@@ -48,7 +48,6 @@ export function useUser() {
             });
             if (res.ok) {
               const { userId } = await res.json();
-              // Re-fetch the full user record
               const { data: newUser } = await supabase
                 .from('users')
                 .select('id, address, protection_level, world_id_verified, ens_name')
@@ -57,12 +56,12 @@ export function useUser() {
               setUser(newUser as VantaUser | null);
             }
           } catch {
-            // silently fail — user stays null
+            // non-fatal
           }
         }
         setLoading(false);
       });
-  }, [primaryWallet?.address]);
+  }, [wallet?.address]);
 
   return { user, loading };
 }

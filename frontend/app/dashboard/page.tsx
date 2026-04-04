@@ -1,6 +1,5 @@
 "use client"
 
-import { useDynamicContext } from "@dynamic-labs/sdk-react-core"
 import { DashboardLayout } from "@/components/vanta/dashboard-layout"
 import { HeroStatusCard } from "@/components/vanta/dashboard/hero-status-card"
 import { TierBreakdownCard } from "@/components/vanta/dashboard/tier-breakdown-card"
@@ -40,7 +39,7 @@ function dbTxToUiTx(tx: ReturnType<typeof useRealtimeTransactions>["transactions
     tier: tierMap[tx.tier] ?? "auto",
     to: tx.to_address,
     from: tx.from_address,
-    network: tx.chain_id === 1 ? "Ethereum Mainnet" : `Chain ${tx.chain_id}`,
+    network: tx.chain_id === 11155111 ? "Sepolia" : tx.chain_id === 1 ? "Ethereum Mainnet" : `Chain ${tx.chain_id}`,
     aiAssessment: tx.risk_score != null ? {
       riskScore: tx.risk_score,
       riskLevel: tx.risk_score < 30 ? "low" : tx.risk_score < 70 ? "medium" : "high",
@@ -50,7 +49,6 @@ function dbTxToUiTx(tx: ReturnType<typeof useRealtimeTransactions>["transactions
 }
 
 export default function DashboardPage() {
-  const { primaryWallet } = useDynamicContext()
   const { user } = useUser()
   const stats = useDashboardStats(user?.id)
   const { transactions, pendingTx, confirmTx, rejectTx } = useRealtimeTransactions(user?.id)
@@ -96,7 +94,7 @@ export default function DashboardPage() {
           riskLevel: (pendingTx.risk_score ?? 0) < 30 ? "low" : (pendingTx.risk_score ?? 0) < 70 ? "medium" : "high",
           riskReasons: pendingTx.policy_reason ? [pendingTx.policy_reason] : [],
           gas: "~$2.00",
-          network: pendingTx.chain_id === 1 ? "Ethereum Mainnet" : `Chain ${pendingTx.chain_id}`,
+          network: pendingTx.chain_id === 11155111 ? "Sepolia" : pendingTx.chain_id === 1 ? "Ethereum Mainnet" : `Chain ${pendingTx.chain_id}`,
           agent: pendingTx.agent_id ? "AI Agent" : "Manual",
           aiChecks: {
             passed: (pendingTx.scan_checks ?? []).filter((c) => c.passed).length,

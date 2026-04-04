@@ -3,7 +3,7 @@
 import { useState } from "react"
 import { motion } from "framer-motion"
 import { Check, Wallet, AlertTriangle } from "lucide-react"
-import { useDynamicContext } from "@dynamic-labs/sdk-react-core"
+import { useDynamic } from "@/lib/dynamic/context"
 import { DashboardLayout } from "@/components/vanta/dashboard-layout"
 import { Switch } from "@/components/ui/switch"
 import { Button } from "@/components/ui/button"
@@ -112,8 +112,8 @@ function RadioOption({
 }
 
 export default function SettingsPage() {
-  const { primaryWallet, handleLogOut } = useDynamicContext()
-  const address = primaryWallet?.address
+  const { wallet, disconnect } = useDynamic()
+  const address = wallet?.address
   const shortAddress = address ? `${address.slice(0, 6)}...${address.slice(-4)}` : '—'
 
   const [confirmationMethod, setConfirmationMethod] = useState<ConfirmationMethod>("passkey")
@@ -164,7 +164,7 @@ export default function SettingsPage() {
                 </div>
                 {address && (
                   <button
-                    onClick={handleLogOut}
+                    onClick={disconnect}
                     className="text-xs text-vanta-text-muted hover:text-vanta-red transition-colors"
                   >
                     Disconnect

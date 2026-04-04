@@ -4,7 +4,7 @@ import { useState, useEffect } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { Check, Wallet, Shield, Sparkles, ArrowRight, ChevronDown } from "lucide-react"
 import Link from "next/link"
-import { useDynamicContext } from "@dynamic-labs/sdk-react-core"
+import { useDynamic } from "@/lib/dynamic/context"
 import { VantaLogo } from "@/components/vanta/logo"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -82,19 +82,19 @@ export default function OnboardingPage() {
   const [selectedPreset, setSelectedPreset] = useState<SecurityPreset>("balanced")
   const [showExplanation, setShowExplanation] = useState(false)
 
-  const { primaryWallet, setShowAuthFlow } = useDynamicContext()
+  const { wallet, connect } = useDynamic()
 
   // Advance to step 2 once wallet is connected
   useEffect(() => {
-    if (primaryWallet && step === 1) {
+    if (wallet && step === 1) {
       setIsConnecting(false)
       setStep(2)
     }
-  }, [primaryWallet, step])
+  }, [wallet, step])
 
   const handleConnect = () => {
     setIsConnecting(true)
-    setShowAuthFlow(true)
+    connect()
   }
 
   const handleVerify = () => {
