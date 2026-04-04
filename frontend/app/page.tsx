@@ -266,27 +266,29 @@ export default function HomePage() {
 
             {/* Text */}
             <div className="space-y-8">
-              <motion.h1
+              <motion.div
                 initial={{ opacity: 0, y: 24 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.75, delay: 0.1, ease: [0.22, 0.68, 0, 1] }}
-                className="text-5xl font-semibold leading-[1.06] tracking-tight sm:text-6xl"
               >
-                AI agents shouldn&rsquo;t sign
-                <br />
-                <span className="text-[#00FFB2]">without a gatekeeper.</span>
-              </motion.h1>
+                <h1 className="text-5xl font-semibold leading-[1.06] tracking-tight sm:text-6xl">
+                  AI agents shouldn&rsquo;t sign
+                  <br />
+                  <span className="text-[#00FFB2]">without a gatekeeper.</span>
+                </h1>
+              </motion.div>
 
-              <motion.p
+              <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.7, delay: 0.2, ease: [0.22, 0.68, 0, 1] }}
-                className="text-base leading-relaxed text-[#777] max-w-xl"
               >
-                VANTA sits between your AI agent and the blockchain. Every proposed
-                transaction is scored, tiered, and — where it matters — handed to you for
-                explicit confirmation before it touches the network.
-              </motion.p>
+                <p className="text-base leading-relaxed text-[#777] max-w-xl">
+                  VANTA sits between your AI agent and the blockchain. Every proposed
+                  transaction is scored, tiered, and — where it matters — handed to you for
+                  explicit confirmation before it touches the network.
+                </p>
+              </motion.div>
 
               <motion.div
                 initial={{ opacity: 0, y: 16 }}
