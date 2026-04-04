@@ -1,9 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase/server';
 import { evaluateTransaction } from '@/lib/policyEngine';
-import { scanTransaction } from '@/lib/aiScanner';
+import { scanTransaction, type ScanResult } from '@/lib/aiScanner';
 
 const ETH_PRICE_USD = 2400; // TODO: fetch live from CoinGecko
+
+/** Policy-only path for demos (agents simulator) — no Gemini / heuristic AI call */
+const SKIPPED_SCAN_RESULT: ScanResult = {
+  riskScore: 0,
+  recommendation: 'approve',
+  reasoning: 'AI scan was skipped for this request. Verdict reflects the policy engine only.',
+  checks: [],
+  model: 'skipped',
+}
 
 export async function POST(req: NextRequest) {
   let body;
@@ -13,7 +22,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
   }
 
-  const { from, to, value, data, chainId, agentId } = body;
+  const { from, to, value, data, chainId, agentId, skipAiScan } = body;
 
   if (!from || !to || value === undefined) {
     return NextResponse.json({ error: 'Missing required fields: from, to, value' }, { status: 400 });
@@ -100,11 +109,14 @@ export async function POST(req: NextRequest) {
     worldIdVerified,
   );
 
-  // 5. AI scanner
-  const scanResult = await scanTransaction(
-    { from, to, value: String(value), data, chainId, agentId },
-    ETH_PRICE_USD
-  );
+  // 5. AI scanner (optional skip for agents / policy-only demos)
+  const scanResult: ScanResult =
+    skipAiScan === true
+      ? SKIPPED_SCAN_RESULT
+      : await scanTransaction(
+          { from, to, value: String(value), data, chainId, agentId },
+          ETH_PRICE_USD
+        );
 
   // 6. Scanner can escalate tier
   let finalTier = policyResult.tier;

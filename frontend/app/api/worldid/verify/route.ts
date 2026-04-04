@@ -70,12 +70,17 @@ export async function POST(request: Request): Promise<Response> {
       // Check if this nullifier was already used for this action
       const { data: existing } = await supabaseAdmin
         .from('world_id_nullifiers')
-        .select('id')
+        .select('id, address')
         .eq('nullifier', nullifierDecimal)
         .eq('action', action)
-        .single();
+        .maybeSingle();
 
       if (existing) {
+        // Idempotent success for same wallet (prevents double-submit conflicts in dev/strict mode)
+        if (existing.address === normalized) {
+          continue;
+        }
+
         return NextResponse.json(
           { error: 'This World ID has already been used for this action. One human, one verification.' },
           { status: 409 },

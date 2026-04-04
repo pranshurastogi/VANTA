@@ -1,5 +1,6 @@
-// VANTA AI Scanner — heuristic risk assessment for transactions
-// Can be upgraded to call Claude API for deeper analysis
+// VANTA AI Scanner — Gemini 3 Flash powered transaction risk assessment
+// Primary: Google Gemini 3 Flash API for deep AI analysis
+// Fallback: Heuristic-based scanner if API call fails
 
 export interface ScanInput {
   from: string
@@ -21,7 +22,155 @@ export interface ScanResult {
   recommendation: 'approve' | 'flag' | 'block'
   reasoning: string
   checks: ScanCheck[]
+  model?: string             // which model was used
 }
+
+// ── Gemini 3 Flash AI Scanner ──────────────────────────────────────────
+
+const GEMINI_MODEL = 'gemini-3-flash-preview'
+const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta'
+
+export async function scanTransaction(
+  tx: ScanInput,
+  ethPriceUsd: number
+): Promise<ScanResult> {
+  const apiKey = process.env.GEMINI_API_KEY
+
+  // If no API key, fall back to heuristic scan
+  if (!apiKey) {
+    console.warn('[VANTA Scanner] No GEMINI_API_KEY found, using heuristic fallback')
+    return heuristicScan(tx, ethPriceUsd)
+  }
+
+  try {
+    return await geminiScan(tx, ethPriceUsd, apiKey)
+  } catch (error) {
+    console.error('[VANTA Scanner] Gemini API error, falling back to heuristic:', error)
+    return heuristicScan(tx, ethPriceUsd)
+  }
+}
+
+async function geminiScan(
+  tx: ScanInput,
+  ethPriceUsd: number,
+  apiKey: string
+): Promise<ScanResult> {
+  const txValueUsd = (Number(tx.value) / 1e18) * ethPriceUsd
+
+  const prompt = `You are VANTA, a blockchain transaction security scanner. Analyze this transaction and return a JSON risk assessment.
+
+Transaction details:
+- From: ${tx.from}
+- To: ${tx.to}
+- Value: ${tx.value} wei (approximately $${txValueUsd.toFixed(2)} USD)
+- Calldata: ${tx.data || 'none (simple transfer)'}
+- Chain ID: ${tx.chainId ?? 1}
+- Initiated by: ${tx.agentId ? 'AI agent (' + tx.agentId + ')' : 'user directly'}
+
+Evaluate these security checks:
+1. Is the destination address format valid?
+2. Does the calldata contain any suspicious function selectors (e.g., unlimited approvals 0x095ea7b3 with maxUint256, self-destruct patterns, transferOwnership, renounceOwnership)?
+3. Does the transaction amount seem reasonable for a normal user transaction?
+4. Is there any sign of urgency patterns or social engineering in the request context?
+5. Does the calldata contain any personal identifiable information (PII) that would be stored on-chain?
+6. Is this a standard transfer/swap pattern or something unusual?
+7. Is the agent (if any) exhibiting suspicious behavior patterns?
+
+Respond ONLY with this JSON structure, no other text:
+{
+  "riskScore": <0-100>,
+  "recommendation": "<approve|flag|block>",
+  "reasoning": "<one sentence summary>",
+  "checks": [
+    {"name": "<check name>", "passed": <true|false>, "detail": "<explanation>"}
+  ]
+}`
+
+  const url = `${GEMINI_API_BASE}/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      contents: [{ parts: [{ text: prompt }] }],
+      generationConfig: {
+        responseMimeType: 'application/json',
+        responseJsonSchema: {
+          type: 'object',
+          properties: {
+            riskScore: { type: 'integer', description: 'Risk score from 0 to 100' },
+            recommendation: {
+              type: 'string',
+              enum: ['approve', 'flag', 'block'],
+              description: 'Action recommendation',
+            },
+            reasoning: { type: 'string', description: 'One sentence summary of the analysis' },
+            checks: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  name: { type: 'string', description: 'Check name' },
+                  passed: { type: 'boolean', description: 'Whether the check passed' },
+                  detail: { type: 'string', description: 'Explanation of the check result' },
+                },
+                required: ['name', 'passed', 'detail'],
+              },
+              description: 'Individual security checks performed',
+            },
+          },
+          required: ['riskScore', 'recommendation', 'reasoning', 'checks'],
+        },
+        thinkingConfig: {
+          thinkingLevel: 'low',
+        },
+      },
+    }),
+  })
+
+  if (!response.ok) {
+    const errorText = await response.text()
+    throw new Error(`Gemini API ${response.status}: ${errorText}`)
+  }
+
+  const data = await response.json()
+
+  // Extract the text from Gemini's response structure
+  const text = data.candidates?.[0]?.content?.parts
+    ?.filter((p: { text?: string }) => p.text)
+    ?.map((p: { text: string }) => p.text)
+    ?.join('') ?? ''
+
+  if (!text) {
+    throw new Error('Empty response from Gemini API')
+  }
+
+  // Parse the JSON response
+  const cleaned = text.replace(/```json|```/g, '').trim()
+  const result = JSON.parse(cleaned)
+
+  // Clamp risk score to 0-100
+  const riskScore = Math.max(0, Math.min(100, result.riskScore ?? 0))
+
+  return {
+    riskScore,
+    recommendation: validateRecommendation(result.recommendation),
+    reasoning: result.reasoning || 'Analysis complete.',
+    checks: (result.checks || []).map((c: { name?: string; passed?: boolean; detail?: string }) => ({
+      name: c.name || 'Unknown check',
+      passed: !!c.passed,
+      detail: c.detail || '',
+    })),
+    model: GEMINI_MODEL,
+  }
+}
+
+function validateRecommendation(rec: string): 'approve' | 'flag' | 'block' {
+  if (rec === 'approve' || rec === 'flag' || rec === 'block') return rec
+  return 'flag' // default to flag if unknown
+}
+
+// ── Heuristic Fallback Scanner ─────────────────────────────────────────
 
 // Known high-risk function selectors
 const RISKY_SELECTORS: Record<string, { label: string; risk: number }> = {
@@ -45,10 +194,7 @@ function isLargeValue(value: string, ethPrice: number, threshold = 10000): boole
   return (Number(value) / 1e18) * ethPrice > threshold
 }
 
-export async function scanTransaction(
-  tx: ScanInput,
-  ethPriceUsd: number
-): Promise<ScanResult> {
+function heuristicScan(tx: ScanInput, ethPriceUsd: number): ScanResult {
   const checks: ScanCheck[] = []
   let riskScore = 0
 
@@ -64,7 +210,7 @@ export async function scanTransaction(
     checks.push({ name: 'Address reputation', passed: true, detail: 'Destination not flagged in threat database' })
   }
 
-  // 2. Unlimited approval check (classic approval phishing)
+  // 2. Unlimited approval check
   const isUnlimitedApproval = selector === '0x095ea7b3' && dataLower.includes(MAX_UINT256)
   if (isUnlimitedApproval) {
     riskScore += 55
@@ -77,7 +223,6 @@ export async function scanTransaction(
 
   // 3. setApprovalForAll check (NFT drainer)
   if (selector === '0xa22cb465') {
-    // Check if setting approval to true (last 64 chars contain "1")
     const approvalFlag = tx.data?.slice(-64)
     if (approvalFlag && parseInt(approvalFlag, 16) === 1) {
       riskScore += 45
@@ -96,10 +241,9 @@ export async function scanTransaction(
     checks.push({ name: 'Ownership', passed: false, detail: 'renounceOwnership() — irreversible admin key burn' })
   }
 
-  // 5. Multicall / bundled operations (can hide malicious calls)
+  // 5. Multicall / bundled operations
   if (selector === '0xac9650d8') {
     riskScore += 15
-    // Check if the bundled data contains suspicious patterns
     if (dataLower.includes(MAX_UINT256)) {
       riskScore += 30
       checks.push({ name: 'Bundled call', passed: false, detail: 'multicall contains unlimited approval — disguised attack' })
@@ -108,7 +252,7 @@ export async function scanTransaction(
     }
   }
 
-  // 6. General risky selector (if not already caught above)
+  // 6. General risky selector
   if (selector && RISKY_SELECTORS[selector] && !isUnlimitedApproval && selector !== '0xa22cb465' && selector !== '0xf2fde38b' && selector !== '0x715018a6' && selector !== '0xac9650d8') {
     const info = RISKY_SELECTORS[selector]
     riskScore += info.risk
@@ -155,7 +299,6 @@ export async function scanTransaction(
     riskScore >= 30 ? 'flag' :
     'approve'
 
-  // Generate detailed reasoning based on what was found
   let reasoning: string
   if (recommendation === 'block') {
     const threats = checks.filter(c => !c.passed).map(c => c.name).join(', ')
@@ -167,5 +310,5 @@ export async function scanTransaction(
     reasoning = 'All security checks passed. Transaction appears safe based on heuristic analysis. No known threat patterns detected.'
   }
 
-  return { riskScore, recommendation, reasoning, checks }
+  return { riskScore, recommendation, reasoning, checks, model: 'heuristic-v1' }
 }

@@ -64,3 +64,23 @@ export interface ScanEntry {
   score: number
   checks?: AICheck[]
 }
+
+export interface ScanHistoryEntry {
+  id: string
+  user_address: string | null
+  from_address: string
+  to_address: string
+  value: string
+  value_usd: number | null
+  calldata: string | null
+  chain_id: number
+  agent_id: string | null
+  risk_score: number
+  recommendation: "approve" | "flag" | "block"
+  reasoning: string
+  checks: { name: string; passed: boolean; detail: string }[]
+  model: string
+  scan_source: "manual" | "auto" | "api"
+  ip_address: string | null
+  created_at: string
+}

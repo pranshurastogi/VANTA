@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useCallback } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import {
   Bot,
@@ -46,9 +46,16 @@ interface SimulationResult {
   tier: number
   status: string
   policyResult: { tier: number; reason: string; matchedRules: string[] }
-  scanResult: { riskScore: number; recommendation: string; reasoning: string; checks?: { name: string; passed: boolean; detail: string }[] }
+  scanResult: { riskScore: number; recommendation: string; reasoning: string; checks?: { name: string; passed: boolean; detail: string }[]; model?: string }
   worldIdRequired?: boolean
   worldIdVerified?: boolean
+}
+
+interface SimulationStep {
+  id: string
+  label: string
+  status: "pending" | "running" | "done" | "error"
+  detail?: string
 }
 
 // ─── Real calldata encoders ────────────────────────────────────────────────
@@ -360,7 +367,196 @@ function shortenAddr(addr: string) {
   return `${addr.slice(0, 6)}...${addr.slice(-4)}`
 }
 
+// ─── Simulation Detail Modal ───────────────────────────────────────────────
+
+function SimulationDetailModal({
+  result,
+  onClose,
+}: {
+  result: SimulationResult
+  onClose: () => void
+}) {
+  const tierInfo = TIER_COLORS[result.tier as 1 | 2 | 3]
+  const TierIcon = tierInfo?.icon ?? ShieldCheck
+  const checks = result.scanResult.checks || []
+  const passedCount = checks.filter((c) => c.passed).length
+  const failedCount = checks.filter((c) => !c.passed).length
+  const riskScore = result.scanResult.riskScore
+
+  // SVG gauge
+  const radius = 40
+  const circumference = 2 * Math.PI * radius
+  const dashOffset = circumference - (riskScore / 100) * circumference
+  const scoreColor = riskScore < 30 ? "var(--vanta-teal)" : riskScore < 70 ? "var(--vanta-amber)" : "var(--vanta-red)"
+  const scoreText = riskScore < 30 ? "text-vanta-teal" : riskScore < 70 ? "text-vanta-amber" : "text-vanta-red"
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+      onClick={(e) => e.target === e.currentTarget && onClose()}
+    >
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95, y: 20 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.95, y: 20 }}
+        transition={{ type: "spring", damping: 25, stiffness: 300 }}
+        className="w-full max-w-lg bg-vanta-surface border border-border rounded-2xl overflow-hidden shadow-2xl max-h-[85vh] flex flex-col"
+      >
+        {/* Header */}
+        <div className={cn("px-6 py-4 flex items-center justify-between border-b border-border", tierInfo?.bg)}>
+          <div className="flex items-center gap-3">
+            <TierIcon size={20} className={tierInfo?.text} />
+            <div>
+              <h2 className={cn("text-sm font-medium", tierInfo?.text)}>{tierInfo?.label}</h2>
+              <p className="text-[11px] text-vanta-text-muted font-mono">TX #{result.txId.slice(0, 12)}</p>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-1.5 rounded-lg hover:bg-vanta-elevated/50 transition-colors"
+          >
+            <XCircle size={18} className="text-vanta-text-muted" />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="px-6 py-5 space-y-5 overflow-y-auto">
+          {/* Score gauge + verdict */}
+          <div className="flex items-center justify-between">
+            <div className="relative w-28 h-28 flex items-center justify-center">
+              <svg className="absolute w-full h-full -rotate-90" viewBox="0 0 100 100">
+                <circle cx="50" cy="50" r={radius} fill="none" stroke="var(--vanta-elevated)" strokeWidth="6" />
+                <motion.circle
+                  cx="50" cy="50" r={radius}
+                  fill="none" stroke={scoreColor} strokeWidth="6" strokeLinecap="round"
+                  strokeDasharray={circumference}
+                  initial={{ strokeDashoffset: circumference }}
+                  animate={{ strokeDashoffset: dashOffset }}
+                  transition={{ duration: 1, ease: "easeOut" }}
+                />
+              </svg>
+              <div className="text-center">
+                <motion.span
+                  className={cn("font-mono text-2xl font-bold", scoreText)}
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ delay: 0.3 }}
+                >
+                  {riskScore}
+                </motion.span>
+                <p className="text-[10px] text-vanta-text-muted">/100</p>
+              </div>
+            </div>
+            <div className="text-right space-y-2">
+              <span className={cn(
+                "inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full border font-mono text-sm",
+                result.scanResult.recommendation === "approve" ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400" :
+                result.scanResult.recommendation === "flag" ? "bg-vanta-amber/10 border-vanta-amber/30 text-vanta-amber" :
+                "bg-vanta-red/10 border-vanta-red/30 text-vanta-red"
+              )}>
+                {result.scanResult.recommendation === "approve" ? <ShieldCheck size={16} /> :
+                 result.scanResult.recommendation === "flag" ? <AlertTriangle size={16} /> :
+                 <XCircle size={16} />}
+                {result.scanResult.recommendation === "approve" ? "Approved" : result.scanResult.recommendation === "flag" ? "Flagged" : "Blocked"}
+              </span>
+              <div className="text-xs text-vanta-text-muted">
+                <span className="text-emerald-400">{passedCount} passed</span>
+                {failedCount > 0 && <span className="text-vanta-red"> · {failedCount} failed</span>}
+              </div>
+              {result.worldIdVerified && (
+                <p className="text-[11px] text-vanta-teal">World ID: 2x limit active</p>
+              )}
+            </div>
+          </div>
+
+          {/* Policy Engine */}
+          <div className="bg-vanta-elevated/50 rounded-xl px-4 py-3 border border-border">
+            <div className="flex items-center gap-2 mb-2">
+              <Shield size={14} className="text-vanta-teal" />
+              <span className="text-[11px] text-vanta-text-muted uppercase tracking-wider">Policy Engine</span>
+            </div>
+            <p className="text-[13px] text-foreground">{result.policyResult.reason}</p>
+            {result.policyResult.matchedRules.length > 0 && (
+              <p className="text-[11px] text-vanta-text-muted mt-1">{result.policyResult.matchedRules.length} rule(s) matched</p>
+            )}
+          </div>
+
+          {/* AI Reasoning */}
+          <div className="bg-vanta-elevated/50 rounded-xl px-4 py-3 border border-border">
+            <div className="flex items-center gap-2 mb-2">
+              <Zap size={14} className="text-vanta-teal" />
+              <span className="text-[11px] text-vanta-text-muted uppercase tracking-wider">AI Analysis</span>
+            </div>
+            <p className="text-[13px] text-vanta-text-secondary leading-relaxed">{result.scanResult.reasoning}</p>
+          </div>
+
+          {/* Security Checks */}
+          {checks.length > 0 && (
+            <div>
+              <h3 className="text-xs text-vanta-text-muted mb-3 uppercase tracking-wider">Security Checks ({checks.length})</h3>
+              <ul className="space-y-2">
+                {checks.map((check, i) => (
+                  <motion.li
+                    key={i}
+                    initial={{ opacity: 0, x: -8 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: i * 0.05 }}
+                    className="flex items-start gap-3 bg-vanta-elevated/30 rounded-lg px-3 py-2.5"
+                  >
+                    {check.passed ? (
+                      <Check size={14} className="text-emerald-400 mt-0.5 shrink-0" />
+                    ) : (
+                      <XCircle size={14} className="text-vanta-red mt-0.5 shrink-0" />
+                    )}
+                    <div className="min-w-0">
+                      <p className="text-xs text-foreground font-medium">{check.name}</p>
+                      <p className="text-[11px] text-vanta-text-muted mt-0.5">{check.detail}</p>
+                    </div>
+                  </motion.li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="px-6 py-3 border-t border-border flex items-center justify-between bg-vanta-elevated/30">
+          <span className="text-[10px] text-vanta-text-muted font-mono flex items-center gap-1.5">
+            <Zap size={10} />
+            {result.scanResult.model === "skipped"
+              ? "Policy only — AI scan skipped"
+              : `Powered by ${result.scanResult.model || "Gemini 3 Flash"}`}
+          </span>
+          <button
+            onClick={onClose}
+            className="text-xs px-4 py-1.5 bg-vanta-elevated hover:bg-border transition-colors rounded-lg text-foreground"
+          >
+            Close
+          </button>
+        </div>
+      </motion.div>
+    </motion.div>
+  )
+}
+
 // ─── Agent Simulator ───────────────────────────────────────────────────────
+
+function pipelineSteps(skipAi: boolean): SimulationStep[] {
+  return [
+    { id: "validate", label: "Validating transaction inputs", status: "pending" },
+    { id: "policy", label: "Running policy engine", status: "pending" },
+    {
+      id: "ai",
+      label: skipAi ? "AI scan (skipped — policy only)" : "Gemini 3 Flash AI scan",
+      status: "pending",
+    },
+    { id: "persist", label: "Recording to Supabase", status: "pending" },
+    { id: "verdict", label: "Computing final verdict", status: "pending" },
+  ]
+}
 
 function AgentSimulator() {
   const { wallet } = useDynamic()
@@ -375,16 +571,41 @@ function AgentSimulator() {
   const [activeCategory, setActiveCategory] = useState<Category | "all">("all")
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [history, setHistory] = useState<SimulationResult[]>([])
+  const [steps, setSteps] = useState<SimulationStep[]>([])
+  const [detailModal, setDetailModal] = useState<SimulationResult | null>(null)
+  /** When on, submit uses policy engine only — no Gemini / AI scanner on the server */
+  const [skipAiScan, setSkipAiScan] = useState(false)
 
   const address = wallet?.address
+
+  const advanceStep = useCallback((stepId: string, status: SimulationStep["status"], detail?: string) => {
+    setSteps((prev) =>
+      prev.map((s) =>
+        s.id === stepId ? { ...s, status, detail: detail ?? s.detail } : s
+      )
+    )
+  }, [])
 
   async function simulate() {
     if (!address || !to) return
     setLoading(true)
     setError("")
     setResult(null)
+    setSteps(pipelineSteps(skipAiScan).map((s) => ({ ...s, status: "pending" as const })))
 
     try {
+      // Step 1: Validate
+      advanceStep("validate", "running")
+      await new Promise((r) => setTimeout(r, 300))
+      advanceStep("validate", "done", "Inputs validated")
+
+      // Step 2: Policy engine (starts)
+      advanceStep("policy", "running")
+      await new Promise((r) => setTimeout(r, 200))
+
+      // Step 3: AI scan (starts concurrently)
+      advanceStep("ai", "running")
+
       const valueWei = String(Math.round(parseFloat(eth || "0") * 1e18))
       const res = await fetch("/api/transactions/submit", {
         method: "POST",
@@ -396,17 +617,48 @@ function AgentSimulator() {
           data: calldata || undefined,
           chainId: 11155111,
           agentId: agentName,
+          skipAiScan,
         }),
       })
+
       if (!res.ok) {
         const e = await res.json()
+        advanceStep("policy", "error", e.error ?? "Failed")
+        advanceStep("ai", "error")
         throw new Error(e.error ?? "Request failed")
       }
+
       const data = await res.json()
+
+      // Complete steps with real data
+      advanceStep("policy", "done", `Tier ${data.policyResult.tier} — ${data.policyResult.reason}`)
+      await new Promise((r) => setTimeout(r, 150))
+
+      const aiChecks = data.scanResult.checks || []
+      const passed = aiChecks.filter((c: { passed: boolean }) => c.passed).length
+      const failed = aiChecks.filter((c: { passed: boolean }) => !c.passed).length
+      const aiDetail =
+        data.scanResult.model === "skipped"
+          ? "No Gemini call — policy only"
+          : `Risk ${data.scanResult.riskScore}/100 — ${passed} passed, ${failed} failed`
+      advanceStep("ai", "done", aiDetail)
+      await new Promise((r) => setTimeout(r, 150))
+
+      advanceStep("persist", "running")
+      await new Promise((r) => setTimeout(r, 200))
+      advanceStep("persist", "done", `TX ${data.txId.slice(0, 8)}… saved`)
+      await new Promise((r) => setTimeout(r, 100))
+
+      const verdictText = data.status === "approved" ? "Auto-approved" : data.status === "blocked" ? "Blocked" : "Needs confirmation"
+      advanceStep("verdict", "running")
+      await new Promise((r) => setTimeout(r, 200))
+      advanceStep("verdict", "done", verdictText)
+
       setResult(data)
       setHistory((prev) => [data, ...prev].slice(0, 20))
     } catch (e: unknown) {
       setError((e as Error).message)
+      setSteps((prev) => prev.map((s) => s.status === "pending" ? { ...s, status: "error" as const } : s))
     } finally {
       setLoading(false)
     }
@@ -428,6 +680,7 @@ function AgentSimulator() {
       setCalldata(preset.data ?? "")
     }
     setResult(null)
+    setSteps([])
     setError("")
   }
 
@@ -437,6 +690,7 @@ function AgentSimulator() {
   const TierIcon = tierInfo?.icon ?? ShieldCheck
 
   return (
+    <>
     <div className="bg-vanta-surface border border-border rounded-xl overflow-hidden">
       {/* Header */}
       <div className="px-5 py-4 border-b border-border flex items-center justify-between">
@@ -449,9 +703,22 @@ function AgentSimulator() {
             <p className="text-[11px] text-vanta-text-muted">Simulate real-world attacks & transactions through the VANTA pipeline</p>
           </div>
         </div>
-        <div className="flex items-center gap-2 text-[10px] text-vanta-text-muted">
-          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 pulse-dot" />
-          Sepolia · Chain 11155111
+        <div className="flex flex-col items-end gap-2 sm:flex-row sm:items-center sm:gap-4">
+          <label className="flex items-center gap-2 cursor-pointer select-none">
+            <Switch
+              checked={skipAiScan}
+              onCheckedChange={setSkipAiScan}
+              disabled={loading}
+              className="data-[state=checked]:bg-vanta-amber shrink-0"
+            />
+            <span className="text-[11px] text-vanta-text-muted max-w-[140px] sm:max-w-none text-right sm:text-left">
+              Skip AI scan
+            </span>
+          </label>
+          <div className="flex items-center gap-2 text-[10px] text-vanta-text-muted">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 pulse-dot" />
+            Sepolia · 11155111
+          </div>
         </div>
       </div>
 
@@ -655,6 +922,55 @@ function AgentSimulator() {
               )}
             </Button>
 
+            {/* Live simulation steps */}
+            <AnimatePresence>
+              {steps.length > 0 && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: "auto" }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="overflow-hidden"
+                >
+                  <div className="bg-vanta-elevated/50 border border-border rounded-xl p-4 space-y-2">
+                    <div className="flex items-center gap-2 mb-3">
+                      <Terminal size={14} className="text-vanta-teal" />
+                      <span className="text-[11px] text-vanta-text-muted uppercase tracking-wider">Pipeline Execution</span>
+                    </div>
+                    {steps.map((step, i) => (
+                      <motion.div
+                        key={step.id}
+                        initial={{ opacity: 0, x: -8 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ delay: i * 0.05 }}
+                        className="flex items-start gap-3 text-xs"
+                      >
+                        <div className="mt-0.5 shrink-0">
+                          {step.status === "pending" && <div className="w-3.5 h-3.5 rounded-full border border-border" />}
+                          {step.status === "running" && <Loader2 size={14} className="animate-spin text-vanta-teal" />}
+                          {step.status === "done" && <Check size={14} className="text-emerald-400" />}
+                          {step.status === "error" && <XCircle size={14} className="text-vanta-red" />}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <span className={cn(
+                            "font-medium",
+                            step.status === "running" ? "text-vanta-teal" :
+                            step.status === "done" ? "text-foreground" :
+                            step.status === "error" ? "text-vanta-red" :
+                            "text-vanta-text-muted"
+                          )}>
+                            {step.label}
+                          </span>
+                          {step.detail && (
+                            <p className="text-[10px] text-vanta-text-muted mt-0.5 truncate">{step.detail}</p>
+                          )}
+                        </div>
+                      </motion.div>
+                    ))}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
             {/* Error */}
             <AnimatePresence>
               {error && (
@@ -769,23 +1085,33 @@ function AgentSimulator() {
                     <div className="p-3 bg-vanta-surface rounded-lg border border-border">
                       <div className="text-[10px] text-vanta-text-muted mb-1.5 flex items-center gap-1">
                         <Zap size={10} />
-                        AI Assessment
+                        {result.scanResult.model === "skipped"
+                          ? "AI scan skipped — policy only"
+                          : `AI Assessment — ${result.scanResult.model || "Gemini 3 Flash"}`}
                       </div>
                       <p className="text-xs text-foreground">{result.scanResult.reasoning}</p>
                     </div>
 
-                    {/* TX ID + explorer link */}
+                    {/* TX ID + explorer link + detail modal button */}
                     <div className="flex items-center justify-between px-3 py-2.5 bg-vanta-surface rounded-lg border border-border text-xs">
                       <div className="flex items-center gap-2">
                         <span className="text-vanta-text-muted">TX ID</span>
                         <span className="font-mono text-foreground">{result.txId.slice(0, 12)}...{result.txId.slice(-6)}</span>
                       </div>
-                      <button
-                        onClick={() => navigator.clipboard.writeText(result.txId)}
-                        className="text-vanta-text-muted hover:text-foreground"
-                      >
-                        <Copy size={12} />
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => setDetailModal(result)}
+                          className="text-vanta-teal hover:underline text-[11px]"
+                        >
+                          View full details →
+                        </button>
+                        <button
+                          onClick={() => navigator.clipboard.writeText(result.txId)}
+                          className="text-vanta-text-muted hover:text-foreground"
+                        >
+                          <Copy size={12} />
+                        </button>
+                      </div>
                     </div>
 
                     {/* Status-specific banners */}
@@ -839,12 +1165,16 @@ function AgentSimulator() {
                   {history.slice(1, 6).map((h) => {
                     const tc = TIER_COLORS[h.tier as 1 | 2 | 3]
                     return (
-                      <div key={h.txId} className="flex items-center gap-3 px-3 py-2 bg-vanta-elevated rounded-lg text-xs">
+                      <button
+                        key={h.txId}
+                        onClick={() => setDetailModal(h)}
+                        className="w-full flex items-center gap-3 px-3 py-2 bg-vanta-elevated rounded-lg text-xs hover:border-vanta-teal/30 border border-transparent transition-colors text-left"
+                      >
                         <span className={cn("w-1.5 h-1.5 rounded-full shrink-0", h.tier === 1 ? "bg-emerald-400" : h.tier === 2 ? "bg-vanta-amber" : "bg-vanta-red")} />
                         <span className="font-mono text-vanta-text-muted text-[10px] w-20">{h.txId.slice(0, 8)}…</span>
                         <span className={cn("text-[10px] font-medium", tc.text)}>{tc.label.split(" · ")[1]}</span>
                         <span className="ml-auto text-vanta-text-muted">{h.scanResult.riskScore}/100</span>
-                      </div>
+                      </button>
                     )
                   })}
                 </div>
@@ -869,6 +1199,17 @@ function AgentSimulator() {
         </div>
       </div>
     </div>
+
+    {/* Detail Modal Portal */}
+    <AnimatePresence>
+      {detailModal && (
+        <SimulationDetailModal
+          result={detailModal}
+          onClose={() => setDetailModal(null)}
+        />
+      )}
+    </AnimatePresence>
+    </>
   )
 }
 

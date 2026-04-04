@@ -9,12 +9,27 @@ create table public.users (
   id uuid primary key default gen_random_uuid(),
   address text unique not null,
   ens_name text,
+  email text,
+  confirmation_method text default 'passkey' check (confirmation_method in ('passkey', 'worldid', 'ledger', 'manual')),
+  tier3_escalation text,
   world_id_verified boolean default false,
   world_id_nullifier text,
   dynamic_wallet_id text,
   protection_level text default 'balanced' check (protection_level in ('conservative', 'balanced', 'power')),
   created_at timestamptz default now(),
   updated_at timestamptz default now()
+);
+
+-- World ID verification records (one proof per human/action)
+create table public.world_id_nullifiers (
+  id uuid primary key default gen_random_uuid(),
+  nullifier numeric(78,0) not null,
+  action text not null,
+  address text not null,
+  credential_type text default 'orb',
+  protocol_version text default '4.0',
+  verified_at timestamptz default now(),
+  unique (nullifier, action)
 );
 
 -- Agents
@@ -90,6 +105,27 @@ create table public.flagged_addresses (
   flagged_at timestamptz default now()
 );
 
+-- AI Scanner history
+create table public.scan_history (
+  id uuid primary key default gen_random_uuid(),
+  user_address text,
+  from_address text not null,
+  to_address text not null,
+  value text not null,
+  value_usd numeric(18,2),
+  calldata text,
+  chain_id integer default 1,
+  agent_id text,
+  risk_score integer check (risk_score between 0 and 100),
+  recommendation text check (recommendation in ('approve', 'flag', 'block')),
+  reasoning text,
+  checks jsonb default '[]',
+  model text default 'gemini-3-flash',
+  scan_source text default 'manual' check (scan_source in ('manual', 'auto', 'api')),
+  ip_address text,
+  created_at timestamptz default now()
+);
+
 -- ============================================
 -- Indexes
 -- ============================================
@@ -99,6 +135,10 @@ create index idx_transactions_created on public.transactions(created_at desc);
 create index idx_rules_user on public.rules(user_id);
 create index idx_agents_user on public.agents(user_id);
 create index idx_daily_spend_user_date on public.daily_spend(user_id, date);
+create index idx_scan_history_user on public.scan_history(user_address);
+create index idx_scan_history_created on public.scan_history(created_at desc);
+create index idx_world_id_nullifiers_address on public.world_id_nullifiers(address);
+create index idx_world_id_nullifiers_action on public.world_id_nullifiers(action);
 
 -- ============================================
 -- Row Level Security (open for hackathon)
@@ -108,12 +148,16 @@ alter table public.rules enable row level security;
 alter table public.transactions enable row level security;
 alter table public.agents enable row level security;
 alter table public.daily_spend enable row level security;
+alter table public.scan_history enable row level security;
+alter table public.world_id_nullifiers enable row level security;
 
 create policy "open" on public.users for all using (true) with check (true);
 create policy "open" on public.rules for all using (true) with check (true);
 create policy "open" on public.transactions for all using (true) with check (true);
 create policy "open" on public.agents for all using (true) with check (true);
 create policy "open" on public.daily_spend for all using (true) with check (true);
+create policy "open" on public.scan_history for all using (true) with check (true);
+create policy "open" on public.world_id_nullifiers for all using (true) with check (true);
 
 -- ============================================
 -- Realtime
@@ -146,3 +190,4 @@ begin
   end if;
 end;
 $$ language plpgsql;
+
