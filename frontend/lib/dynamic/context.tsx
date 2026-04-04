@@ -29,6 +29,8 @@ export interface DynamicState {
   disconnect: () => Promise<void>;
   showConnectModal: boolean;
   setShowConnectModal: (v: boolean) => void;
+  /** Call after a successful wallet connection to refresh state */
+  refreshWallet: () => void;
 }
 
 const DynamicContext = createContext<DynamicState>({
@@ -39,6 +41,7 @@ const DynamicContext = createContext<DynamicState>({
   disconnect: async () => {},
   showConnectModal: false,
   setShowConnectModal: () => {},
+  refreshWallet: () => {},
 });
 
 export function DynamicProvider({ children }: { children: ReactNode }) {
@@ -46,6 +49,21 @@ export function DynamicProvider({ children }: { children: ReactNode }) {
   const [isReady, setIsReady] = useState(false);
   const [showConnectModal, setShowConnectModal] = useState(false);
   const initialized = useRef(false);
+
+  /** Read wallet accounts from the SDK and update state */
+  const syncWallet = useCallback(() => {
+    try {
+      const accounts = getWalletAccounts();
+      const primary = getPrimaryWalletAccount() ?? accounts[0] ?? null;
+      setWallet(primary);
+      if (primary) {
+        ensureSepolia(primary);
+        registerUser(primary.address);
+      }
+    } catch {
+      // SDK may not be ready yet
+    }
+  }, []);
 
   useEffect(() => {
     if (initialized.current) return;
@@ -57,19 +75,32 @@ export function DynamicProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    // Hydrate initial wallet state (synchronous)
-    const accounts = getWalletAccounts();
-    const primary = getPrimaryWalletAccount() ?? accounts[0] ?? null;
-    setWallet(primary);
-    setIsReady(true);
-
-    if (primary) {
-      ensureSepolia(primary);
-      registerUser(primary.address);
+    // Check if SDK is already initialized
+    if (client.initStatus === 'finished') {
+      syncWallet();
+      setIsReady(true);
+    } else if (client.initStatus === 'failed') {
+      setIsReady(true);
     }
 
+    // Wait for SDK to finish initializing before reading accounts
+    const unsubInit = onEvent(
+      {
+        event: 'initStatusChanged',
+        listener: ({ initStatus }) => {
+          if (initStatus === 'finished') {
+            syncWallet();
+            setIsReady(true);
+          } else if (initStatus === 'failed') {
+            setIsReady(true);
+          }
+        },
+      },
+      client,
+    );
+
     // Subscribe to wallet account changes
-    const unsubscribe = onEvent(
+    const unsubAccounts = onEvent(
       {
         event: 'walletAccountsChanged',
         listener: ({ walletAccounts }) => {
@@ -84,13 +115,32 @@ export function DynamicProvider({ children }: { children: ReactNode }) {
       client,
     );
 
-    return unsubscribe;
-  }, []);
+    // Listen for logout
+    const unsubLogout = onEvent(
+      {
+        event: 'logout',
+        listener: () => {
+          setWallet(null);
+        },
+      },
+      client,
+    );
+
+    return () => {
+      unsubInit();
+      unsubAccounts();
+      unsubLogout();
+    };
+  }, [syncWallet]);
 
   const connect = useCallback(() => setShowConnectModal(true), []);
 
   const disconnect = useCallback(async () => {
-    await logout();
+    try {
+      await logout();
+    } catch {
+      // already logged out
+    }
     setWallet(null);
   }, []);
 
@@ -104,6 +154,7 @@ export function DynamicProvider({ children }: { children: ReactNode }) {
         disconnect,
         showConnectModal,
         setShowConnectModal,
+        refreshWallet: syncWallet,
       }}
     >
       {children}

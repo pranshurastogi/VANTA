@@ -23,7 +23,7 @@ import { cn } from '@/lib/utils';
 type Flow = 'providers' | 'email' | 'otp';
 
 export function WalletConnectModal() {
-  const { showConnectModal, setShowConnectModal } = useDynamic();
+  const { showConnectModal, setShowConnectModal, refreshWallet } = useDynamic();
 
   const [flow, setFlow] = useState<Flow>('providers');
   const [providers, setProviders] = useState<WalletProviderData[]>([]);
@@ -65,6 +65,8 @@ export function WalletConnectModal() {
       if (missing.length > 0) {
         await createWaasWalletAccounts({ chains: missing });
       }
+      // Manually refresh wallet state so the UI updates immediately
+      refreshWallet();
       close();
     } catch (e: unknown) {
       setError((e as Error)?.message ?? 'Connection failed. Please try again.');
@@ -97,7 +99,11 @@ export function WalletConnectModal() {
       await verifyOTP({ otpVerification, verificationToken: otp });
       // Create WaaS wallet accounts unconditionally (SDK may have stale account list)
       const missing = getChainsMissingWaasWalletAccounts();
-      await createWaasWalletAccounts({ chains: missing });
+      if (missing.length > 0) {
+        await createWaasWalletAccounts({ chains: missing });
+      }
+      // Manually refresh wallet state so the UI updates immediately
+      refreshWallet();
       close();
     } catch (e: unknown) {
       setError((e as Error)?.message ?? 'Invalid code. Please try again.');

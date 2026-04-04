@@ -55,8 +55,9 @@ export function evaluateTransaction(
       }
 
       case 'blacklist': {
-        const addresses = (rule.config.addresses as string[] | undefined) ?? []
-        if (addresses.map((a) => a.toLowerCase()).includes(tx.to.toLowerCase())) {
+        const raw = (rule.config.addresses ?? []) as (string | { address: string })[]
+        const addresses = raw.map((a) => (typeof a === 'string' ? a : a.address).toLowerCase())
+        if (addresses.includes(tx.to.toLowerCase())) {
           matchedRules.push(rule.id)
           return { tier: 3, reason: `Destination ${tx.to} is blacklisted`, matchedRules }
         }
@@ -84,10 +85,9 @@ export function evaluateTransaction(
       }
 
       case 'whitelist': {
-        const addresses = (rule.config.addresses as string[] | undefined) ?? []
-        // If whitelist has entries and destination is on it → stay tier 1 for this check
-        // If destination is NOT on whitelist → escalate to tier 2 (unknown address)
-        if (addresses.length > 0 && !addresses.map((a) => a.toLowerCase()).includes(tx.to.toLowerCase())) {
+        const raw = (rule.config.addresses ?? []) as (string | { address: string })[]
+        const addresses = raw.map((a) => (typeof a === 'string' ? a : a.address).toLowerCase())
+        if (addresses.length > 0 && !addresses.includes(tx.to.toLowerCase())) {
           matchedRules.push(rule.id)
           tier = Math.max(tier, 2) as 1 | 2 | 3
           reason = 'Destination not in trusted address list'

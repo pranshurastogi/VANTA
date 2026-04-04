@@ -101,7 +101,19 @@ export default function OnboardingPage() {
     setStep(3)
   }
 
-  const handleSetup = () => {
+  const handleSetup = async () => {
+    // Persist the selected protection level
+    if (wallet?.address) {
+      try {
+        await fetch('/api/user/settings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ address: wallet.address, protection_level: selectedPreset }),
+        })
+      } catch {
+        // non-fatal
+      }
+    }
     setStep(4)
   }
 

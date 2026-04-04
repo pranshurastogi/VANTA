@@ -58,7 +58,7 @@ const quickSetAmounts = [100, 250, 500, 1000, 2500]
 function toDynamicPolicy(rule: DbRule) {
   if (rule.type === "per_tx_limit") {
     return {
-      chain: "EVM", chainIds: [1],
+      chain: "EVM", chainIds: [11155111],
       name: RULE_LABELS[rule.type].name,
       ruleType: "allow",
       addresses: [] as string[],
@@ -67,16 +67,16 @@ function toDynamicPolicy(rule: DbRule) {
   }
   if (rule.type === "whitelist") {
     const addrs = ((rule.config?.addresses ?? []) as { address: string }[]).map((a) => a.address)
-    return { chain: "EVM", chainIds: [1], name: RULE_LABELS[rule.type].name, ruleType: "allow", addresses: addrs }
+    return { chain: "EVM", chainIds: [11155111], name: RULE_LABELS[rule.type].name, ruleType: "allow", addresses: addrs }
   }
   if (rule.type === "contract_whitelist") {
     const contracts = (rule.config?.contracts ?? []) as string[]
     const addresses = contracts.flatMap((c) => CONTRACT_ADDRESSES[c] ?? [])
-    return { chain: "EVM", chainIds: [1], name: RULE_LABELS[rule.type].name, ruleType: "allow", addresses }
+    return { chain: "EVM", chainIds: [11155111], name: RULE_LABELS[rule.type].name, ruleType: "allow", addresses }
   }
   if (rule.type === "blacklist") {
     const addrs = ((rule.config?.addresses ?? []) as { address: string }[]).map((a) => a.address)
-    return { chain: "EVM", chainIds: [1], name: RULE_LABELS[rule.type].name, ruleType: "deny", addresses: addrs }
+    return { chain: "EVM", chainIds: [11155111], name: RULE_LABELS[rule.type].name, ruleType: "deny", addresses: addrs }
   }
   return null
 }
@@ -430,35 +430,42 @@ function AddRuleModal({ onClose, onAdd }: AddRuleModalProps) {
   )
 }
 
-// Sync a single rule to Dynamic Policy API
-async function syncWithDynamic(rule: DbRule) {
+// Sync a single rule to Dynamic Policy API (non-blocking — returns null on failure)
+async function syncWithDynamic(rule: DbRule): Promise<string | null> {
   const policy = toDynamicPolicy(rule)
-  if (!policy) return
+  if (!policy) return null
 
   const existingId = rule.config?.dynamic_rule_id as string | undefined
   const body = existingId
     ? { rulesToUpdate: [{ id: existingId, ...policy }] }
     : { rulesToAdd: [policy] }
 
-  const res = await fetch("/api/rules", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  })
-  if (!res.ok) return null
-
-  const data = await res.json()
-  return (data?.rulesToAdd?.[0]?.id ?? data?.rulesToUpdate?.[0]?.id) as string | undefined
+  try {
+    const res = await fetch("/api/rules", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    })
+    if (!res.ok) return null
+    const data = await res.json()
+    return (data?.rulesToAdd?.[0]?.id ?? data?.rulesToUpdate?.[0]?.id) as string | null
+  } catch {
+    return null
+  }
 }
 
 async function deleteFromDynamic(rule: DbRule) {
   const ruleId = rule.config?.dynamic_rule_id as string | undefined
   if (!ruleId) return
-  await fetch("/api/rules", {
-    method: "DELETE",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ ruleIdsToDelete: [ruleId] }),
-  })
+  try {
+    await fetch("/api/rules", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ruleIdsToDelete: [ruleId] }),
+    })
+  } catch {
+    // non-fatal
+  }
 }
 
 export default function RulesPage() {

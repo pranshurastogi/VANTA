@@ -7,7 +7,9 @@ import { ActiveRulesCard } from "@/components/vanta/dashboard/active-rules-card"
 import { AgentStatusCard } from "@/components/vanta/dashboard/agent-status-card"
 import { RecentActivityCard } from "@/components/vanta/dashboard/recent-activity-card"
 import { ConfirmationModal } from "@/components/vanta/confirmation-modal"
+import { SetupChecklist } from "@/components/vanta/dashboard/setup-checklist"
 import { useUser } from "@/hooks/useUser"
+import { useRules } from "@/hooks/useRules"
 import { useRealtimeTransactions } from "@/hooks/useRealtimeTransactions"
 import { useDashboardStats } from "@/hooks/useDashboardStats"
 import type { Transaction } from "@/lib/types"
@@ -50,14 +52,23 @@ function dbTxToUiTx(tx: ReturnType<typeof useRealtimeTransactions>["transactions
 
 export default function DashboardPage() {
   const { user } = useUser()
+  const { rules } = useRules(user?.id)
   const stats = useDashboardStats(user?.id)
   const { transactions, pendingTx, confirmTx, rejectTx } = useRealtimeTransactions(user?.id)
+  const confirmationMethod = user?.confirmation_method ?? 'passkey'
 
   const uiTxs = transactions.slice(0, 10).map(dbTxToUiTx)
 
   return (
     <DashboardLayout title="Dashboard">
       <div className="space-y-4">
+        {/* Setup walkthrough — shown until user completes all steps */}
+        <SetupChecklist
+          user={user}
+          rulesCount={rules.length}
+          hasTransactions={transactions.length > 0}
+        />
+
         <HeroStatusCard
           volumeProtected={stats.volumeProtected}
           threatsBlocked={stats.threatsBlocked}
@@ -83,8 +94,9 @@ export default function DashboardPage() {
       <ConfirmationModal
         isOpen={!!pendingTx}
         onClose={() => rejectTx(pendingTx!.id)}
-        onConfirm={() => confirmTx(pendingTx!.id)}
+        onConfirm={() => confirmTx(pendingTx!.id, confirmationMethod)}
         onReject={() => rejectTx(pendingTx!.id)}
+        confirmationMethod={confirmationMethod}
         transaction={pendingTx ? {
           type: pendingTx.calldata ? "Contract call" : "Transfer",
           amount: `${(Number(pendingTx.value) / 1e18).toFixed(4)} ETH`,
@@ -96,6 +108,7 @@ export default function DashboardPage() {
           gas: "~$2.00",
           network: pendingTx.chain_id === 11155111 ? "Sepolia" : pendingTx.chain_id === 1 ? "Ethereum Mainnet" : `Chain ${pendingTx.chain_id}`,
           agent: pendingTx.agent_id ? "AI Agent" : "Manual",
+          tier: pendingTx.tier,
           aiChecks: {
             passed: (pendingTx.scan_checks ?? []).filter((c) => c.passed).length,
             warnings: (pendingTx.scan_checks ?? []).filter((c) => !c.passed).length,

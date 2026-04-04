@@ -2,16 +2,27 @@
 
 import { useState } from "react"
 import { motion, AnimatePresence } from "framer-motion"
-import { Fingerprint, ArrowDown, ChevronDown, Check } from "lucide-react"
+import { Fingerprint, ArrowDown, ChevronDown, Check, Globe, Usb, Type, Loader2 } from "lucide-react"
 import { VantaLogo } from "./logo"
 import { StatusBadge } from "./status-badge"
 import { cn } from "@/lib/utils"
+import { usePasskey } from "@/hooks/usePasskey"
+
+type ConfirmationMethod = "passkey" | "worldid" | "ledger" | "manual"
+
+const CONFIRM_LABELS: Record<ConfirmationMethod, { icon: typeof Fingerprint; label: string }> = {
+  passkey: { icon: Fingerprint, label: "Confirm with Face ID" },
+  worldid: { icon: Globe, label: "Confirm with World ID" },
+  ledger: { icon: Usb, label: "Confirm with Ledger" },
+  manual: { icon: Type, label: "Type CONFIRM to approve" },
+}
 
 interface ConfirmationModalProps {
   isOpen: boolean
   onClose: () => void
   onConfirm: () => void
   onReject: () => void
+  confirmationMethod?: ConfirmationMethod
   transaction?: {
     type: string
     amount: string
@@ -23,6 +34,7 @@ interface ConfirmationModalProps {
     gas: string
     network: string
     agent: string
+    tier?: number
     aiChecks: { passed: number; warnings: number }
     warningDetail?: string
   }
@@ -77,6 +89,7 @@ export function ConfirmationModal({
   onClose,
   onConfirm,
   onReject,
+  confirmationMethod = "passkey",
   transaction = {
     type: "Send",
     amount: "1.2 ETH",
@@ -88,15 +101,43 @@ export function ConfirmationModal({
     gas: "$3.20",
     network: "Ethereum Mainnet",
     agent: "DeFi manager",
+    tier: 2,
     aiChecks: { passed: 5, warnings: 1 },
     warningDetail: "This address has not been previously used"
   }
 }: ConfirmationModalProps) {
   const [showDetails, setShowDetails] = useState(false)
   const [isConfirmed, setIsConfirmed] = useState(false)
+  const [manualInput, setManualInput] = useState("")
+  const [verifying, setVerifying] = useState(false)
+  const [verifyError, setVerifyError] = useState("")
+  const { verify: verifyPasskey, registered: passkeyRegistered, error: passkeyErr } = usePasskey()
 
-  const handleConfirm = () => {
+  const confirmInfo = CONFIRM_LABELS[confirmationMethod]
+  const ConfirmIcon = confirmInfo.icon
+
+  const handleConfirm = async () => {
+    if (confirmationMethod === "manual" && manualInput !== "CONFIRM") return
+    setVerifyError("")
+
+    // For passkey method, actually trigger biometric verification
+    if (confirmationMethod === "passkey") {
+      if (!passkeyRegistered) {
+        // No passkey registered — fall through as demo (show warning but allow)
+        setVerifyError("No passkey registered. Go to Settings to set one up. Approving without verification.")
+      } else {
+        setVerifying(true)
+        const ok = await verifyPasskey()
+        setVerifying(false)
+        if (!ok) {
+          setVerifyError("Passkey verification failed. Try again.")
+          return
+        }
+      }
+    }
+
     setIsConfirmed(true)
+    setManualInput("")
     setTimeout(() => {
       onConfirm()
       setIsConfirmed(false)
@@ -222,19 +263,60 @@ export function ConfirmationModal({
                     )}
                   </AnimatePresence>
 
+                  {/* Tier badge */}
+                  {transaction.tier && (
+                    <div className="flex justify-center mb-4">
+                      <StatusBadge variant={transaction.tier === 2 ? "warning" : "risk"}>
+                        Tier {transaction.tier}
+                      </StatusBadge>
+                    </div>
+                  )}
+
                   {/* Actions */}
                   <div className="space-y-3">
-                    {/* Biometric Button with shimmer */}
+                    {/* Manual confirmation input */}
+                    {confirmationMethod === "manual" && (
+                      <input
+                        type="text"
+                        placeholder='Type "CONFIRM" to approve'
+                        value={manualInput}
+                        onChange={(e) => setManualInput(e.target.value.toUpperCase())}
+                        className="w-full px-4 py-3 bg-vanta-elevated border border-border-hover rounded-xl text-foreground font-mono text-center text-sm placeholder:text-vanta-text-muted"
+                        autoFocus
+                      />
+                    )}
+
+                    {/* Verify error */}
+                    {verifyError && (
+                      <div className="p-2.5 bg-vanta-amber/10 rounded-lg text-[11px] text-vanta-amber text-center">
+                        {verifyError}
+                      </div>
+                    )}
+
+                    {/* Confirm Button with shimmer */}
                     <motion.button
                       whileHover={{ scale: 1.02 }}
                       whileTap={{ scale: 0.98 }}
                       onClick={handleConfirm}
-                      className="relative w-full h-14 rounded-xl border border-vanta-teal text-vanta-teal flex items-center justify-center gap-3 overflow-hidden group hover:bg-vanta-teal hover:text-vanta-bg transition-colors"
+                      disabled={verifying || (confirmationMethod === "manual" && manualInput !== "CONFIRM")}
+                      className={cn(
+                        "relative w-full h-14 rounded-xl border border-vanta-teal text-vanta-teal flex items-center justify-center gap-3 overflow-hidden group hover:bg-vanta-teal hover:text-vanta-bg transition-colors",
+                        (verifying || (confirmationMethod === "manual" && manualInput !== "CONFIRM")) && "opacity-40 cursor-not-allowed hover:bg-transparent hover:text-vanta-teal"
+                      )}
                     >
                       {/* Shimmer effect */}
                       <div className="absolute inset-0 shimmer-border opacity-50 group-hover:opacity-0" />
-                      <Fingerprint size={20} />
-                      <span className="text-sm font-medium">Confirm with Face ID</span>
+                      {verifying ? (
+                        <>
+                          <Loader2 size={20} className="animate-spin" />
+                          <span className="text-sm font-medium">Verifying…</span>
+                        </>
+                      ) : (
+                        <>
+                          <ConfirmIcon size={20} />
+                          <span className="text-sm font-medium">{confirmInfo.label}</span>
+                        </>
+                      )}
                     </motion.button>
 
                     <button
