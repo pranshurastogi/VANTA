@@ -19,8 +19,13 @@ export async function POST(req: NextRequest) {
   const actionUrl = dashboardUrl || 'https://vanta.app/dashboard';
 
   try {
+    // Use a verified sender domain in production. In development / hackathon mode,
+    // Resend's free tier allows sending from onboarding@resend.dev to any address.
+    // Set RESEND_FROM_EMAIL to override (e.g. "VANTA <noreply@yourdomain.com>")
+    const fromAddress = process.env.RESEND_FROM_EMAIL ?? 'VANTA Security <onboarding@resend.dev>';
+
     const { data, error } = await resend.emails.send({
-      from: 'VANTA Security <noreply@updates.resend.dev>',
+      from: fromAddress,
       to: [to],
       subject: `🛡️ VANTA: Transaction requires your attention (${tierLabel})`,
       html: `
@@ -61,11 +66,14 @@ export async function POST(req: NextRequest) {
     });
 
     if (error) {
+      console.error('[notify] Resend error:', error);
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
+    console.log('[notify] Email sent successfully. ID:', data?.id, '→', to);
     return NextResponse.json({ sent: true, id: data?.id });
   } catch (e: unknown) {
+    console.error('[notify] Unexpected error:', e);
     return NextResponse.json({ error: (e as Error).message }, { status: 500 });
   }
 }

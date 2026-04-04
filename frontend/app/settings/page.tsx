@@ -21,6 +21,7 @@ import { Input } from "@/components/ui/input"
 import { StatusBadge } from "@/components/vanta/status-badge"
 import { cn } from "@/lib/utils"
 import { WorldIdGate } from "@/components/vanta/world-id-gate"
+import { LedgerGate } from "@/components/vanta/ledger-gate"
 import { useWorldId } from "@/hooks/useWorldId"
 
 // ─── Shared UI ────────────────────────────────────────────
@@ -242,6 +243,18 @@ export default function SettingsPage() {
         {/* ── World ID Verification ── */}
         <SettingsSection title="World ID — Proof of Human">
           <WorldIdGate address={address} />
+        </SettingsSection>
+
+        {/* ── Ledger Hardware Wallet ── */}
+        <SettingsSection title="Ledger — Hardware Signer">
+          <div className="space-y-3">
+            <p className="text-xs text-vanta-text-muted">
+              Connect your Ledger hardware signer via USB or Bluetooth. Once connected, it can
+              be used as the confirmation method for Tier 2 &amp; Tier 3 transactions.
+              Requires Chrome 89+, Edge 89+, or Brave on desktop.
+            </p>
+            <LedgerGate />
+          </div>
         </SettingsSection>
 
         {/* ── Passkey Setup ── */}

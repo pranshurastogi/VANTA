@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
 
   const { data: found, error: userErr } = await supabaseAdmin
     .from('users')
-    .select('id, world_id_verified')
+    .select('id, email, world_id_verified')
     .eq('address', from.toLowerCase())
     .single();
 
@@ -45,16 +45,11 @@ export async function POST(req: NextRequest) {
   }
 
   if (found) {
-    user = { ...found, world_id_verified: !!(found as Record<string, unknown>).world_id_verified };
-    // Try to fetch email (column may not exist)
-    try {
-      const { data: withEmail } = await supabaseAdmin
-        .from('users')
-        .select('email')
-        .eq('id', found.id)
-        .single();
-      if (withEmail) user.email = (withEmail as { email?: string }).email ?? null;
-    } catch { /* email column doesn't exist — that's fine */ }
+    user = {
+      id: found.id,
+      email: (found as Record<string, unknown>).email as string | null ?? null,
+      world_id_verified: !!(found as Record<string, unknown>).world_id_verified,
+    };
   }
 
   // Auto-register: wallet is connected on frontend but row doesn't exist yet
@@ -159,8 +154,14 @@ export async function POST(req: NextRequest) {
 
   // 9. Send email notification for Tier 2/3 (non-blocking)
   if ((status === 'pending' || status === 'blocked') && user.email) {
-    const origin = req.headers.get('origin') || req.headers.get('referer')?.replace(/\/[^/]*$/, '') || '';
-    fetch(`${origin}/api/notify`, {
+    // Use req.nextUrl.origin which is always correct in Next.js route handlers,
+    // falling back to the NEXT_PUBLIC_APP_URL env var for edge cases.
+    const appOrigin =
+      req.nextUrl.origin ||
+      process.env.NEXT_PUBLIC_APP_URL ||
+      `${req.nextUrl.protocol}//${req.nextUrl.host}`;
+
+    fetch(`${appOrigin}/api/notify`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -170,9 +171,11 @@ export async function POST(req: NextRequest) {
         toAddress: to,
         tier: finalTier,
         riskScore: scanResult.riskScore,
-        dashboardUrl: `${origin}/dashboard`,
+        dashboardUrl: `${appOrigin}/dashboard`,
       }),
-    }).catch(() => {}); // fire-and-forget
+    }).catch((e) => {
+      console.error('[notify] Failed to send email notification:', e);
+    });
   }
 
   // 10. Update daily spend for auto-approved transactions (non-fatal if table missing)
