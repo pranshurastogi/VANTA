@@ -1,5 +1,6 @@
 "use client"
 
+import { useState, useCallback } from "react"
 import { DashboardLayout } from "@/components/vanta/dashboard-layout"
 import { HeroStatusCard } from "@/components/vanta/dashboard/hero-status-card"
 import { TierBreakdownCard } from "@/components/vanta/dashboard/tier-breakdown-card"
@@ -56,11 +57,46 @@ export default function DashboardPage() {
   const stats = useDashboardStats(user?.id)
   const { transactions, pendingTx, confirmTx, rejectTx } = useRealtimeTransactions(user?.id)
   const confirmationMethod = user?.confirmation_method ?? 'passkey'
+  const [showModal, setShowModal] = useState(false)
 
   const uiTxs = transactions.slice(0, 10).map(dbTxToUiTx)
 
+  // Count pending transactions
+  const pendingCount = transactions.filter((t) => t.status === "pending").length
+
+  // Bell click opens the modal if there's a pending tx
+  const handleBellClick = useCallback(() => {
+    if (pendingTx) {
+      setShowModal(true)
+    }
+  }, [pendingTx])
+
+  // Auto-show modal when a new pending tx arrives
+  const isModalOpen = showModal || !!pendingTx
+
+  const handleConfirm = useCallback(() => {
+    if (pendingTx) {
+      confirmTx(pendingTx.id, confirmationMethod)
+    }
+  }, [pendingTx, confirmTx, confirmationMethod])
+
+  const handleReject = useCallback(() => {
+    if (pendingTx) {
+      rejectTx(pendingTx.id)
+      setShowModal(false)
+    }
+  }, [pendingTx, rejectTx])
+
+  const handleClose = useCallback(() => {
+    setShowModal(false)
+  }, [])
+
   return (
-    <DashboardLayout title="Dashboard">
+    <DashboardLayout
+      title="Dashboard"
+      pendingCount={pendingCount}
+      onBellClick={handleBellClick}
+    >
       <div className="space-y-4">
         {/* Setup walkthrough — shown until user completes all steps */}
         <SetupChecklist
@@ -90,20 +126,23 @@ export default function DashboardPage() {
         <RecentActivityCard transactions={uiTxs} />
       </div>
 
-      {/* Realtime confirmation modal — appears when an agent submits a Tier 2 transaction */}
+      {/* Realtime confirmation modal */}
       <ConfirmationModal
-        isOpen={!!pendingTx}
-        onClose={() => rejectTx(pendingTx!.id)}
-        onConfirm={() => confirmTx(pendingTx!.id, confirmationMethod)}
-        onReject={() => rejectTx(pendingTx!.id)}
+        isOpen={isModalOpen}
+        onClose={handleClose}
+        onConfirm={handleConfirm}
+        onReject={handleReject}
         walletAddress={user?.address}
         confirmationMethod={confirmationMethod}
         worldIdRequired={pendingTx?.tier === 3}
         transaction={pendingTx ? {
+          id: pendingTx.id,
           type: pendingTx.calldata ? "Contract call" : "Transfer",
           amount: `${(Number(pendingTx.value) / 1e18).toFixed(4)} ETH`,
           amountUsd: `$${(pendingTx.value_usd ?? 0).toFixed(2)}`,
-          to: pendingTx.to_address,
+          to: `${pendingTx.to_address.slice(0, 6)}...${pendingTx.to_address.slice(-4)}`,
+          toFull: pendingTx.to_address,
+          fromFull: pendingTx.from_address,
           isNewAddress: true,
           riskLevel: (pendingTx.risk_score ?? 0) < 30 ? "low" : (pendingTx.risk_score ?? 0) < 70 ? "medium" : "high",
           riskReasons: pendingTx.policy_reason ? [pendingTx.policy_reason] : [],
@@ -111,6 +150,9 @@ export default function DashboardPage() {
           network: pendingTx.chain_id === 11155111 ? "Sepolia" : pendingTx.chain_id === 1 ? "Ethereum Mainnet" : `Chain ${pendingTx.chain_id}`,
           agent: pendingTx.agent_id ? "AI Agent" : "Manual",
           tier: pendingTx.tier,
+          chainId: pendingTx.chain_id,
+          txHash: pendingTx.tx_hash,
+          value: pendingTx.value,
           aiChecks: {
             passed: (pendingTx.scan_checks ?? []).filter((c) => c.passed).length,
             warnings: (pendingTx.scan_checks ?? []).filter((c) => !c.passed).length,

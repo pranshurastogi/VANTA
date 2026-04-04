@@ -3,10 +3,17 @@
 import { useState } from "react"
 import Link from "next/link"
 import { motion, AnimatePresence } from "framer-motion"
-import { Check, AlertTriangle, XCircle, ChevronDown } from "lucide-react"
+import { Check, AlertTriangle, XCircle, ChevronDown, ExternalLink, Copy } from "lucide-react"
 import { StatusBadge } from "../status-badge"
 import { Transaction } from "@/lib/types"
 import { cn } from "@/lib/utils"
+
+const SEPOLIA_EXPLORER = "https://sepolia.etherscan.io"
+
+function shortenAddr(addr?: string) {
+  if (!addr) return "—"
+  return `${addr.slice(0, 6)}...${addr.slice(-4)}`
+}
 
 interface RecentActivityCardProps {
   transactions: Transaction[]
@@ -25,6 +32,7 @@ function StatusIcon({ status }: { status: Transaction["status"] }) {
 
 function TransactionRow({ transaction }: { transaction: Transaction }) {
   const [isExpanded, setIsExpanded] = useState(false)
+  const explorer = transaction.network === "Sepolia" ? SEPOLIA_EXPLORER : "https://etherscan.io"
 
   return (
     <div className="border-b border-border last:border-0">
@@ -104,24 +112,48 @@ function TransactionRow({ transaction }: { transaction: Transaction }) {
               <div className="mt-4 pt-4 border-t border-border grid grid-cols-2 md:grid-cols-4 gap-4 text-xs">
                 <div>
                   <span className="text-vanta-text-muted block mb-1">From</span>
-                  <span className="font-mono text-foreground">{transaction.from}</span>
+                  <div className="flex items-center gap-1">
+                    <span className="font-mono text-foreground">{shortenAddr(transaction.from)}</span>
+                    {transaction.from && (
+                      <a
+                        href={`${explorer}/address/${transaction.from}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-vanta-text-muted hover:text-vanta-teal"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <ExternalLink size={11} />
+                      </a>
+                    )}
+                  </div>
                 </div>
                 <div>
                   <span className="text-vanta-text-muted block mb-1">To</span>
-                  <span className="font-mono text-foreground flex items-center gap-1">
-                    {transaction.to}
+                  <div className="flex items-center gap-1">
+                    <span className="font-mono text-foreground">{shortenAddr(transaction.to)}</span>
                     {transaction.contractVerified && (
                       <Check size={12} className="text-vanta-teal" />
                     )}
-                  </span>
+                    {transaction.to && (
+                      <a
+                        href={`${explorer}/address/${transaction.to}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-vanta-text-muted hover:text-vanta-teal"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <ExternalLink size={11} />
+                      </a>
+                    )}
+                  </div>
                 </div>
                 <div>
                   <span className="text-vanta-text-muted block mb-1">Network</span>
                   <span className="text-foreground">{transaction.network}</span>
                 </div>
                 <div>
-                  <span className="text-vanta-text-muted block mb-1">Gas</span>
-                  <span className="font-mono text-foreground">{transaction.gas}</span>
+                  <span className="text-vanta-text-muted block mb-1">TX ID</span>
+                  <span className="font-mono text-foreground text-[10px]">{shortenAddr(transaction.id)}</span>
                 </div>
               </div>
             </div>
@@ -150,9 +182,15 @@ export function RecentActivityCard({ transactions }: RecentActivityCardProps) {
         </Link>
       </div>
       <div>
-        {transactions.map((transaction) => (
-          <TransactionRow key={transaction.id} transaction={transaction} />
-        ))}
+        {transactions.length === 0 ? (
+          <div className="px-6 py-8 text-center text-xs text-vanta-text-muted">
+            No transactions yet. Submit one via the MCP endpoint to get started.
+          </div>
+        ) : (
+          transactions.map((transaction) => (
+            <TransactionRow key={transaction.id} transaction={transaction} />
+          ))
+        )}
       </div>
     </motion.div>
   )

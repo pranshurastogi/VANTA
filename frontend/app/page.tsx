@@ -3,13 +3,14 @@ import { Button } from "@/components/ui/button"
 import { VantaLogo } from "@/components/vanta/logo"
 import {
   AlertTriangle,
-  Bot,
+  ArrowRight,
   BrainCircuit,
   CheckCircle2,
   ChevronRight,
   Fingerprint,
+  LayoutDashboard,
   Lock,
-  Rocket,
+  Shield,
   ShieldAlert,
   ShieldCheck,
   Wallet,
@@ -21,19 +22,19 @@ const risks = [
     icon: ShieldAlert,
     title: "Prompt injection",
     description:
-      "Malicious text hidden in docs or webpages tries to override your intent and trigger wallet-draining actions.",
+      "Untrusted content can embed instructions that steer the model toward signing or approving harmful transactions.",
   },
   {
     icon: AlertTriangle,
     title: "Social engineering",
     description:
-      "Urgency, fake support messages, and authority impersonation pressure your agent into harmful approvals.",
+      "Pressure tactics and impersonation in conversation context can push automated flows toward unsafe approvals.",
   },
   {
     icon: BrainCircuit,
-    title: "AI execution mistakes",
+    title: "Model and tooling error",
     description:
-      "Even without malice, model ambiguity can send funds to the wrong destination or run the wrong contract call.",
+      "Ambiguous user intent, wrong parameters, or incorrect tool use can produce valid-looking transactions that do not match what the user meant.",
   },
 ]
 
@@ -113,15 +114,15 @@ export default function HomePage() {
             </div>
           </div>
           <nav className="hidden items-center gap-6 text-sm text-vanta-text-secondary md:flex">
-            <a href="#problem" className="transition-colors hover:text-vanta-text-primary">Problem</a>
-            <a href="#model" className="transition-colors hover:text-vanta-text-primary">2-of-2 Model</a>
-            <a href="#tiers" className="transition-colors hover:text-vanta-text-primary">Risk Tiers</a>
-            <a href="#daemon" className="transition-colors hover:text-vanta-text-primary">Daemon</a>
+            <a href="#problem" className="transition-colors hover:text-vanta-text-primary">Threat model</a>
+            <a href="#model" className="transition-colors hover:text-vanta-text-primary">Dual approval</a>
+            <a href="#tiers" className="transition-colors hover:text-vanta-text-primary">Risk tiers</a>
+            <a href="#daemon" className="transition-colors hover:text-vanta-text-primary">Policy engine</a>
           </nav>
           <Button asChild className="gap-2 bg-vanta-teal text-black hover:bg-vanta-teal/90">
             <Link href="/dashboard">
-              <Rocket className="h-4 w-4" />
-              Launch App
+              Open dashboard
+              <ArrowRight className="h-4 w-4" />
             </Link>
           </Button>
         </div>
@@ -129,54 +130,56 @@ export default function HomePage() {
 
       <section className="mx-auto grid w-full max-w-7xl gap-10 px-4 pb-20 pt-16 sm:px-6 lg:grid-cols-2 lg:px-8 lg:pt-24">
         <div>
-          <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-vanta-teal/30 bg-vanta-teal/10 px-3 py-1 text-xs uppercase tracking-wider text-vanta-teal">
-            <Bot className="h-3.5 w-3.5" />
-            AI + Crypto Wallet Security
+          <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-vanta-teal/30 bg-vanta-teal/10 px-3 py-1 text-xs font-medium uppercase tracking-wider text-vanta-teal">
+            <Shield className="h-3.5 w-3.5 shrink-0" aria-hidden />
+            Transaction security for agentic wallets
           </div>
           <h1 className="max-w-2xl text-4xl font-semibold leading-tight tracking-tight sm:text-5xl lg:text-6xl">
-            Let AI move fast.
-            <span className="block text-vanta-teal">Keep humans in control.</span>
+            Policy and approvals between agents and the chain.
+            <span className="mt-2 block text-vanta-teal">High-impact transfers require explicit human consent.</span>
           </h1>
           <p className="mt-6 max-w-2xl text-lg leading-relaxed text-vanta-text-secondary">
-            Vanta is a verifiable transaction security daemon for AI-driven wallets. We stop prompt injections,
-            social-engineering payloads, and model mistakes before they become irreversible on-chain losses.
+            Vanta is a transaction guardrail layer for wallets operated by AI. It evaluates each proposed action against
+            policy, surfaces risk for review, and blocks categories of calls such as known drainers and unsafe approvals
+            before they are broadcast.
           </p>
           <div className="mt-8 flex flex-wrap items-center gap-3">
             <Button asChild size="lg" className="gap-2 bg-vanta-teal text-black hover:bg-vanta-teal/90">
               <Link href="/dashboard">
-                <Rocket className="h-4 w-4" />
-                Launch App
+                <LayoutDashboard className="h-4 w-4" />
+                Open dashboard
               </Link>
             </Button>
             <Button asChild size="lg" variant="outline" className="border-vanta-teal/40 bg-transparent text-vanta-text-primary hover:bg-vanta-teal/10">
-              <a href="#flow">See Live Flow</a>
+              <a href="#flow">How transactions are reviewed</a>
             </Button>
           </div>
         </div>
         <div className="rounded-2xl border border-border bg-black/45 p-6 shadow-[0_0_0_1px_rgba(255,255,255,0.02),0_18px_80px_-24px_rgba(0,255,178,0.45)]">
-          <p className="mb-4 text-xs uppercase tracking-[0.2em] text-vanta-text-muted">Vanta Core Promise</p>
+          <p className="mb-4 text-xs font-medium uppercase tracking-[0.2em] text-vanta-text-muted">What you get</p>
           <div className="space-y-4 text-sm text-vanta-text-secondary">
             <div className="flex gap-3 rounded-lg border border-border bg-vanta-surface/80 p-3">
-              <ShieldCheck className="mt-0.5 h-4 w-4 text-vanta-teal" />
-              <p>Two independent approvals: human + AI must both agree before any high-impact transaction executes.</p>
+              <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-vanta-teal" aria-hidden />
+              <p>Dual gate for sensitive operations: configured policy plus human confirmation where required, so a single compromised signal is not enough to move funds.</p>
             </div>
             <div className="flex gap-3 rounded-lg border border-border bg-vanta-surface/80 p-3">
-              <Lock className="mt-0.5 h-4 w-4 text-vanta-amber" />
-              <p>Calldata minimization and privacy filtering prevent accidental leakage of business-sensitive context.</p>
+              <Lock className="mt-0.5 h-4 w-4 shrink-0 text-vanta-amber" aria-hidden />
+              <p>Reduced on-chain disclosure: optional metadata and memos are minimized or hashed so public calldata carries less operational detail.</p>
             </div>
             <div className="flex gap-3 rounded-lg border border-border bg-vanta-surface/80 p-3">
-              <Wallet className="mt-0.5 h-4 w-4 text-vanta-red" />
-              <p>Hard-blocked dangerous classes: drainer contracts, unlimited approvals, and guardrail self-modification.</p>
+              <Wallet className="mt-0.5 h-4 w-4 shrink-0 text-vanta-red" aria-hidden />
+              <p>Deny-by-policy for high-risk patterns, including known malicious contracts, unconstrained token approvals, and attempts to weaken guardrails.</p>
             </div>
           </div>
         </div>
       </section>
 
       <section id="problem" className="mx-auto w-full max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
-        <h2 className="text-3xl font-semibold tracking-tight sm:text-4xl">The core problem</h2>
+        <h2 className="text-3xl font-semibold tracking-tight sm:text-4xl">Why agent-connected wallets need a control plane</h2>
         <p className="mt-4 max-w-3xl text-vanta-text-secondary">
-          Connecting an autonomous AI agent to a wallet gives it keys to money and authority over irreversible actions.
-          The benefit is massive productivity. The downside is permanent financial risk.
+          An agent with signing access can initiate transfers and contract calls that cannot be undone. That enables automation,
+          but it also expands the attack surface to prompt injection, social engineering, and model error. A dedicated enforcement
+          layer reduces exposure before execution.
         </p>
         <div className="mt-8 grid gap-4 md:grid-cols-3">
           {risks.map((risk) => (
@@ -192,29 +195,29 @@ export default function HomePage() {
       <section id="model" className="border-y border-border/80 bg-black/30">
         <div className="mx-auto grid w-full max-w-7xl gap-10 px-4 py-16 sm:px-6 lg:grid-cols-2 lg:px-8">
           <div>
-            <h2 className="text-3xl font-semibold tracking-tight sm:text-4xl">The 2-of-2 confirmation model</h2>
+            <h2 className="text-3xl font-semibold tracking-tight sm:text-4xl">Dual approval for high-risk actions</h2>
             <p className="mt-4 text-vanta-text-secondary">
-              Borrowing multisig logic for human-AI collaboration: high-risk actions require a human decision and an AI
-              risk decision. If either refuses, the transaction stops.
+              For operations above your policy threshold, execution requires agreement from both an automated risk assessment
+              and an explicit human step. If either rejects the transaction, it does not broadcast.
             </p>
             <div className="mt-6 space-y-3 text-sm text-vanta-text-secondary">
-              <p><span className="text-vanta-text-primary">Humans catch:</span> emotional pressure, fake urgency, authority abuse.</p>
-              <p><span className="text-vanta-text-primary">AI catches:</span> hidden prompt payloads, adversarial instructions, anomaly patterns.</p>
-              <p><span className="text-vanta-text-primary">Attacker requirement:</span> fool both systems at the same time.</p>
+              <p><span className="text-vanta-text-primary">Human review addresses</span> coercion, urgency, and intent: whether the proposed spend matches what you want to authorize.</p>
+              <p><span className="text-vanta-text-primary">Automated checks address</span> structure and context: calldata shape, counterparties, anomalies, and policy violations in the proposal.</p>
+              <p><span className="text-vanta-text-primary">Net effect</span> is defense in depth: bypassing one layer is insufficient to clear a gated operation.</p>
             </div>
           </div>
           <div className="rounded-2xl border border-vanta-teal/30 bg-gradient-to-br from-vanta-teal/8 to-transparent p-6">
-            <p className="mb-4 text-xs uppercase tracking-[0.2em] text-vanta-teal">Decision Logic</p>
+            <p className="mb-4 text-xs font-medium uppercase tracking-[0.2em] text-vanta-teal">Gated path</p>
             <div className="grid gap-3 text-sm">
-              <div className="rounded-lg border border-border bg-black/50 p-3">Human approval required</div>
-              <div className="flex justify-center">
+              <div className="rounded-lg border border-border bg-black/50 p-3">Policy tier requires human confirmation</div>
+              <div className="flex justify-center" aria-hidden>
                 <ChevronRight className="h-4 w-4 rotate-90 text-vanta-text-muted" />
               </div>
-              <div className="rounded-lg border border-border bg-black/50 p-3">AI risk engine approval required</div>
-              <div className="flex justify-center">
+              <div className="rounded-lg border border-border bg-black/50 p-3">Automated risk evaluation passes</div>
+              <div className="flex justify-center" aria-hidden>
                 <ChevronRight className="h-4 w-4 rotate-90 text-vanta-text-muted" />
               </div>
-              <div className="rounded-lg border border-vanta-teal/30 bg-vanta-teal/10 p-3 text-vanta-text-primary">Broadcast only if both pass</div>
+              <div className="rounded-lg border border-vanta-teal/30 bg-vanta-teal/10 p-3 text-vanta-text-primary">Transaction submitted to the network</div>
             </div>
           </div>
         </div>
@@ -223,8 +226,8 @@ export default function HomePage() {
       <section id="tiers" className="mx-auto w-full max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
         <h2 className="text-3xl font-semibold tracking-tight sm:text-4xl">Transaction risk tiers</h2>
         <p className="mt-4 max-w-3xl text-vanta-text-secondary">
-          Not every action deserves the same friction. Vanta applies policy-based tiers so speed is preserved for safe
-          routines while dangerous operations face escalating controls.
+          Friction scales with impact. Low-risk, allowlisted behavior can proceed with minimal overhead; higher tiers add
+          review, delays, or hard blocks according to your configuration.
         </p>
         <div className="mt-8 grid gap-4 md:grid-cols-3">
           {tiers.map((tier) => (
@@ -246,10 +249,10 @@ export default function HomePage() {
       <section className="border-y border-border/70 bg-black/30">
         <div className="mx-auto grid w-full max-w-7xl gap-8 px-4 py-16 sm:px-6 lg:grid-cols-2 lg:px-8">
           <div>
-            <h2 className="text-3xl font-semibold tracking-tight sm:text-4xl">Calldata leakage is a hidden threat</h2>
+            <h2 className="text-3xl font-semibold tracking-tight sm:text-4xl">On-chain data minimization</h2>
             <p className="mt-4 text-vanta-text-secondary">
-              Transaction calldata is public forever. Vanta strips identifying context from memos and references,
-              replacing sensitive strings with minimal hashes or removing optional metadata entirely.
+              Calldata is public and permanent. Vanta can replace free-text memos and similar fields with hashes or omit
+              optional metadata so fewer operational details appear on the ledger.
             </p>
           </div>
           <pre className="overflow-x-auto rounded-xl border border-border bg-black p-4 text-xs leading-relaxed text-vanta-text-secondary">
@@ -263,10 +266,10 @@ memoHash: "0x8f...ab" // no personal/business context on-chain`}
       </section>
 
       <section id="daemon" className="mx-auto w-full max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
-        <h2 className="text-3xl font-semibold tracking-tight sm:text-4xl">Vanta daemon policy engine</h2>
+        <h2 className="text-3xl font-semibold tracking-tight sm:text-4xl">Daemon policy engine</h2>
         <p className="mt-4 max-w-3xl text-vanta-text-secondary">
-          The daemon enforces non-negotiable boundaries. It never grants itself more power and it never accepts policy
-          changes from untrusted prompt context.
+          Enforcement runs outside the conversational model. Policy upgrades follow a controlled path; arbitrary prompt text
+          cannot expand privileges or disable protections.
         </p>
         <div className="mt-8 grid gap-4 md:grid-cols-3">
           {daemonRules.map((rule) => (
@@ -290,18 +293,22 @@ memoHash: "0x8f...ab" // no personal/business context on-chain`}
 
       <section id="flow" className="border-y border-border/70 bg-black/30">
         <div className="mx-auto w-full max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
-          <h2 className="text-3xl font-semibold tracking-tight sm:text-4xl">Real-world transaction flow</h2>
+          <h2 className="text-3xl font-semibold tracking-tight sm:text-4xl">Example review flow</h2>
+          <p className="mt-4 max-w-3xl text-vanta-text-secondary">
+            End-to-end path from user intent to broadcast when policy requires confirmation.
+          </p>
           <div className="mt-8 grid gap-3 md:grid-cols-2">
             {[
-              "1. User asks: swap 500 USDC to ETH on Uniswap.",
-              "2. AI validates destination, calldata shape, and policy tier.",
-              "3. If Tier 2/3, Vanta opens explicit human confirmation.",
-              "4. AI displays risk explanation, not just a yes/no output.",
-              "5. Optional hardware wallet requires physical confirmation.",
-              "6. Broadcast only after checks pass; else action is blocked.",
+              { n: "01", text: "User requests a swap of USDC for ETH on a configured DEX route." },
+              { n: "02", text: "The agent builds calldata; Vanta classifies the action against tier and allowlists." },
+              { n: "03", text: "If the tier demands it, the user sees a confirmation screen with plain-language risk context." },
+              { n: "04", text: "Automated checks must pass (structure, limits, blocklist, anomaly signals)." },
+              { n: "05", text: "Where configured, a hardware signer or second device provides an additional physical approval." },
+              { n: "06", text: "Only after all required steps succeed is the transaction sent; otherwise it remains unsigned." },
             ].map((step) => (
-              <div key={step} className="rounded-lg border border-border bg-black/45 p-4 text-sm text-vanta-text-secondary">
-                {step}
+              <div key={step.n} className="flex gap-3 rounded-lg border border-border bg-black/45 p-4 text-sm text-vanta-text-secondary">
+                <span className="font-mono text-xs tabular-nums text-vanta-text-muted">{step.n}</span>
+                <span>{step.text}</span>
               </div>
             ))}
           </div>
@@ -310,21 +317,20 @@ memoHash: "0x8f...ab" // no personal/business context on-chain`}
 
       <section className="mx-auto w-full max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
         <div className="rounded-2xl border border-vanta-teal/30 bg-gradient-to-r from-vanta-teal/12 to-transparent p-8 sm:p-10">
-          <h2 className="text-3xl font-semibold tracking-tight sm:text-4xl">Why Vanta exists</h2>
+          <h2 className="text-3xl font-semibold tracking-tight sm:text-4xl">Built for accountable automation</h2>
           <p className="mt-4 max-w-3xl text-vanta-text-secondary">
-            The future is an on-chain co-pilot that is proactive, privacy-preserving, and user-aligned. AI should
-            handle monitoring, pattern detection, and speed. Humans should retain final judgment for meaningful risk.
-            Vanta is that security layer.
+            Agents can monitor, propose, and prepare transactions quickly. Vanta separates that from irreversible execution:
+            policy, disclosure, and human checkpoints apply where your configuration says they matter.
           </p>
           <div className="mt-8 flex flex-wrap gap-3">
             <Button asChild size="lg" className="gap-2 bg-vanta-teal text-black hover:bg-vanta-teal/90">
               <Link href="/dashboard">
-                <Rocket className="h-4 w-4" />
-                Launch App
+                <LayoutDashboard className="h-4 w-4" />
+                Open dashboard
               </Link>
             </Button>
             <Button asChild size="lg" variant="outline" className="border-vanta-teal/40 bg-transparent text-vanta-text-primary hover:bg-vanta-teal/10">
-              <Link href="/agents">Connect Agent</Link>
+              <Link href="/agents">Agent integration</Link>
             </Button>
           </div>
         </div>
@@ -332,8 +338,8 @@ memoHash: "0x8f...ab" // no personal/business context on-chain`}
 
       <footer className="border-t border-border/80 py-8">
         <div className="mx-auto flex w-full max-w-7xl items-center justify-between px-4 text-sm text-vanta-text-muted sm:px-6 lg:px-8">
-          <p>VANTA - Verifiable Autonomous Notary for Transaction Assurance</p>
-          <p className="hidden sm:block">AI speed. Human authority.</p>
+          <p>VANTA — Verifiable Autonomous Notary for Transaction Assurance</p>
+          <p className="hidden sm:block">Automated preparation. Governed execution.</p>
         </div>
       </footer>
     </main>

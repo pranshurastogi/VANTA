@@ -8,23 +8,25 @@ import { TopBar } from "./top-bar"
 interface DashboardLayoutProps {
   children: ReactNode
   title: string
+  pendingCount?: number
+  onBellClick?: () => void
 }
 
 const pageVariants = {
   initial: { opacity: 0, y: 8 },
-  animate: { 
-    opacity: 1, 
+  animate: {
+    opacity: 1,
     y: 0,
     transition: { duration: 0.2, ease: "easeOut" }
   },
-  exit: { 
-    opacity: 0, 
+  exit: {
+    opacity: 0,
     y: -8,
     transition: { duration: 0.15 }
   }
 }
 
-export function DashboardLayout({ children, title }: DashboardLayoutProps) {
+export function DashboardLayout({ children, title, pendingCount, onBellClick }: DashboardLayoutProps) {
   return (
     <div className="min-h-screen bg-vanta-bg">
       {/* Desktop Sidebar */}
@@ -34,7 +36,7 @@ export function DashboardLayout({ children, title }: DashboardLayoutProps) {
 
       {/* Main Content */}
       <main className="md:ml-60 pb-20 md:pb-0">
-        <TopBar title={title} />
+        <TopBar title={title} pendingCount={pendingCount} onBellClick={onBellClick} />
         <AnimatePresence mode="wait">
           <motion.div
             key={title}

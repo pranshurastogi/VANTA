@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   IDKitRequestWidget,
@@ -14,9 +14,16 @@ import {
   AlertTriangle,
   Loader2,
   Sparkles,
-  ExternalLink,
+  ShieldCheck,
+  Eye,
+  EyeOff,
+  Fingerprint,
+  Clock,
+  Hash,
 } from 'lucide-react';
+import { VantaSpinner } from '@/components/vanta/loader';
 import { Button } from '@/components/ui/button';
+import { StatusBadge } from '@/components/vanta/status-badge';
 import { useWorldId } from '@/hooks/useWorldId';
 import { cn } from '@/lib/utils';
 
@@ -97,7 +104,7 @@ export function WorldIdGate({ address, compact, onVerified }: WorldIdGateProps) 
   if (loading) {
     return (
       <div className="flex items-center gap-2 text-xs text-vanta-text-muted">
-        <Loader2 size={14} className="animate-spin" />
+        <VantaSpinner size={14} />
         Checking World ID status...
       </div>
     );
@@ -151,25 +158,36 @@ export function WorldIdGate({ address, compact, onVerified }: WorldIdGateProps) 
     );
   }
 
+  // ─── Derive display values ───
+  const verificationMethod = credentialType === 'orb' ? 'Orb biometric' : credentialType ?? 'World ID';
+  const verifiedDate = verifiedAt ? new Date(verifiedAt) : null;
+  const verifiedDateStr = verifiedDate
+    ? verifiedDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+    : 'On record';
+  const verifiedTimeStr = verifiedDate
+    ? verifiedDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+    : null;
+
   // ─── Full mode (settings page) ───
   return (
     <div className="space-y-4">
+      {/* Header row — mirrors passkey layout */}
       <div className="flex items-center gap-3">
         <motion.div
           animate={verified ? { scale: [1, 1.15, 1] } : {}}
           transition={{ duration: 0.4 }}
           className={cn(
             'w-10 h-10 rounded-lg flex items-center justify-center transition-colors duration-300',
-            verified
-              ? 'bg-gradient-to-br from-vanta-teal/20 to-blue-500/10'
-              : 'bg-vanta-elevated',
+            verified ? 'bg-vanta-teal/10' : 'bg-vanta-elevated',
           )}
         >
-          {verified ? (
-            <Shield size={22} className="text-vanta-teal" />
-          ) : (
-            <Globe size={22} className="text-vanta-text-muted" />
-          )}
+          <Globe
+            size={22}
+            className={cn(
+              'transition-colors duration-300',
+              verified ? 'text-vanta-teal' : 'text-vanta-text-muted',
+            )}
+          />
         </motion.div>
 
         <div className="flex-1">
@@ -179,20 +197,19 @@ export function WorldIdGate({ address, compact, onVerified }: WorldIdGateProps) 
             </span>
             <AnimatePresence>
               {verified && (
-                <motion.span
+                <motion.div
                   initial={{ opacity: 0, scale: 0.8 }}
                   animate={{ opacity: 1, scale: 1 }}
-                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-vanta-teal/10 text-vanta-teal border border-vanta-teal/20"
+                  exit={{ opacity: 0, scale: 0.8 }}
                 >
-                  <Sparkles size={10} />
-                  World ID 4.0
-                </motion.span>
+                  <StatusBadge variant="safe">Active</StatusBadge>
+                </motion.div>
               )}
             </AnimatePresence>
           </div>
           <p className="text-xs text-vanta-text-muted mt-0.5">
             {verified
-              ? `Verified as unique human via ${credentialType === 'orb' ? 'Orb' : credentialType ?? 'World ID'}${verifiedAt ? ` on ${new Date(verifiedAt).toLocaleDateString()}` : ''}`
+              ? `Verified via ${verificationMethod} · World ID 4.0`
               : 'Proves a unique human controls this wallet. Required for Tier 3 override and higher trust limits.'}
           </p>
         </div>
@@ -202,19 +219,130 @@ export function WorldIdGate({ address, compact, onVerified }: WorldIdGateProps) 
             onClick={handleStartVerify}
             disabled={loadingRp || verifying || !address}
             variant="outline"
-            className="border-white/20 bg-gradient-to-r from-[#191C20] to-[#313640] text-white hover:from-[#2a2d32] hover:to-[#3d4149] gap-2"
+            className={cn(
+              "border-vanta-teal text-vanta-teal hover:bg-vanta-teal hover:text-vanta-bg transition-all",
+            )}
           >
             {loadingRp || verifying ? (
-              <Loader2 size={14} className="animate-spin" />
+              <Loader2 size={14} className="animate-spin mr-2" />
             ) : (
-              <Globe size={14} />
+              <Globe size={14} className="mr-2" />
             )}
             {verifying ? 'Verifying...' : 'Verify now'}
           </Button>
         )}
       </div>
 
-      {/* Benefits of verification */}
+      {/* ─── Verified: Credential rows (like passkey list) ─── */}
+      <AnimatePresence>
+        {verified && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            className="space-y-2 overflow-hidden"
+          >
+            {/* Verification details row */}
+            <motion.div
+              initial={{ opacity: 0, x: -8 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: 0 }}
+              className="flex items-center gap-3 px-3 py-2.5 bg-vanta-elevated rounded-lg border border-border/50"
+            >
+              <ShieldCheck size={14} className="text-vanta-teal shrink-0" />
+              <span className="text-xs text-foreground flex-1">
+                Proof of Human
+              </span>
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-vanta-teal/10 text-vanta-teal border border-vanta-teal/20">
+                <Sparkles size={10} />
+                World ID 4.0
+              </span>
+            </motion.div>
+
+            {/* When verified row */}
+            <motion.div
+              initial={{ opacity: 0, x: -8 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: 0.05 }}
+              className="flex items-center gap-3 px-3 py-2.5 bg-vanta-elevated rounded-lg border border-border/50"
+            >
+              <Clock size={14} className="text-vanta-teal shrink-0" />
+              <span className="text-xs text-foreground flex-1">
+                Verified {verifiedDateStr}{verifiedTimeStr ? ` at ${verifiedTimeStr}` : ''}
+              </span>
+              <span className="text-[10px] text-vanta-text-muted">
+                via {verificationMethod}
+              </span>
+            </motion.div>
+
+            {/* Tier 3 override */}
+            <motion.div
+              initial={{ opacity: 0, x: -8 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: 0.1 }}
+              className="flex items-center gap-3 px-3 py-2.5 bg-vanta-elevated rounded-lg border border-border/50"
+            >
+              <Shield size={14} className="text-vanta-teal shrink-0" />
+              <span className="text-xs text-foreground flex-1">
+                Tier 3 override enabled
+              </span>
+              <span className="text-[10px] text-vanta-text-muted">
+                approve blocked txns with biometric
+              </span>
+            </motion.div>
+
+            {/* Daily limit bonus */}
+            <motion.div
+              initial={{ opacity: 0, x: -8 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: 0.15 }}
+              className="flex items-center gap-3 px-3 py-2.5 bg-vanta-elevated rounded-lg border border-border/50"
+            >
+              <Sparkles size={14} className="text-vanta-teal shrink-0" />
+              <span className="text-xs text-foreground flex-1">
+                Daily spend limit 2×
+              </span>
+              <span className="text-[10px] text-vanta-text-muted">
+                verified human trust bonus
+              </span>
+            </motion.div>
+
+            {/* Sybil proof */}
+            <motion.div
+              initial={{ opacity: 0, x: -8 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: 0.2 }}
+              className="flex items-center gap-3 px-3 py-2.5 bg-vanta-elevated rounded-lg border border-border/50"
+            >
+              <Hash size={14} className="text-vanta-teal shrink-0" />
+              <span className="text-xs text-foreground flex-1">
+                Unique nullifier stored
+              </span>
+              <span className="text-[10px] text-vanta-text-muted">
+                Sybil-proof guardian identity
+              </span>
+            </motion.div>
+
+            {/* Zero-knowledge privacy */}
+            <motion.div
+              initial={{ opacity: 0, x: -8 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: 0.25 }}
+              className="flex items-center gap-3 px-3 py-2.5 bg-vanta-elevated rounded-lg border border-border/50"
+            >
+              <EyeOff size={14} className="text-vanta-teal shrink-0" />
+              <span className="text-xs text-foreground flex-1">
+                Zero-knowledge proof
+              </span>
+              <span className="text-[10px] text-vanta-text-muted">
+                no personal data shared with VANTA
+              </span>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ─── Not verified: benefit cards ─── */}
       {!verified && (
         <motion.div
           initial={{ opacity: 0, y: -4 }}
@@ -253,31 +381,6 @@ export function WorldIdGate({ address, compact, onVerified }: WorldIdGateProps) 
           ))}
         </motion.div>
       )}
-
-      {/* Verified benefits active */}
-      <AnimatePresence>
-        {verified && (
-          <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: 'auto' }}
-            exit={{ opacity: 0, height: 0 }}
-            className="p-3 bg-vanta-teal/5 border border-vanta-teal/20 rounded-lg overflow-hidden"
-          >
-            <div className="flex items-center gap-2 mb-2">
-              <CheckCircle size={14} className="text-vanta-teal" />
-              <span className="text-xs font-medium text-vanta-teal">
-                Proof of Human active
-              </span>
-            </div>
-            <ul className="space-y-1 text-[11px] text-vanta-text-secondary">
-              <li>Tier 3 override enabled — approve blocked transactions with biometric</li>
-              <li>Daily spend limit doubled (verified human trust bonus)</li>
-              <li>Unique nullifier stored — Sybil-proof guardian identity</li>
-              <li>Zero-knowledge — no personal data shared with VANTA</li>
-            </ul>
-          </motion.div>
-        )}
-      </AnimatePresence>
 
       {/* Error states */}
       <AnimatePresence>

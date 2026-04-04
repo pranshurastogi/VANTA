@@ -21,6 +21,7 @@ import { Input } from "@/components/ui/input"
 import { StatusBadge } from "@/components/vanta/status-badge"
 import { cn } from "@/lib/utils"
 import { WorldIdGate } from "@/components/vanta/world-id-gate"
+import { useWorldId } from "@/hooks/useWorldId"
 
 // ─── Shared UI ────────────────────────────────────────────
 
@@ -148,6 +149,7 @@ export default function SettingsPage() {
     register: registerPasskey,
   } = usePasskey()
   const address = wallet?.address
+  const { verified: worldIdVerified } = useWorldId(address)
   const shortAddress = address
     ? `${address.slice(0, 6)}...${address.slice(-4)}`
     : "—"
@@ -463,8 +465,15 @@ export default function SettingsPage() {
               />
               <RadioOption
                 selected={confirmationMethod === "worldid"}
-                label="World ID re-verification"
-                description="Verify your humanity again to confirm — strongest Sybil resistance"
+                label="World ID (Proof of Human)"
+                description="Cryptographic proof of unique human — strongest Sybil resistance"
+                badge={
+                  worldIdVerified ? (
+                    <StatusBadge variant="safe">Verified</StatusBadge>
+                  ) : (
+                    <StatusBadge variant="warning">Not verified</StatusBadge>
+                  )
+                }
                 onSelect={() => handleConfirmationChange("worldid")}
               />
               <RadioOption

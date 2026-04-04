@@ -13,7 +13,9 @@ export interface WorldIdState {
 
 /**
  * Hook for World ID verification state.
- * Checks Supabase for existing verification, provides verify trigger.
+ * Uses two sources — the users table (world_id_verified flag) and the
+ * world_id_nullifiers table. Either being true means the user is verified.
+ * The flag in the users table persists across sessions reliably.
  */
 export function useWorldId(address?: string) {
   const [state, setState] = useState<WorldIdState>({
@@ -25,19 +27,44 @@ export function useWorldId(address?: string) {
     verifiedAt: null,
   });
 
-  // Check if user is already verified
+  // Check if user is already verified — try users table first, then nullifiers
   const checkStatus = useCallback(async () => {
     if (!address) {
       setState((s) => ({ ...s, verified: false, loading: false }));
       return;
     }
 
+    const normalized = address.toLowerCase();
+
+    // Source 1: Check `world_id_verified` flag on the users table (most reliable)
     try {
-      // Check nullifier table for this address
+      const { data: userRow } = await supabase
+        .from('users')
+        .select('world_id_verified')
+        .eq('address', normalized)
+        .single();
+
+      if (userRow?.world_id_verified) {
+        setState({
+          verified: true,
+          loading: false,
+          verifying: false,
+          error: null,
+          credentialType: 'orb',
+          verifiedAt: null,
+        });
+        return;
+      }
+    } catch {
+      // column may not exist — continue to source 2
+    }
+
+    // Source 2: Check world_id_nullifiers table for details
+    try {
       const { data } = await supabase
         .from('world_id_nullifiers')
         .select('credential_type, verified_at')
-        .eq('address', address.toLowerCase())
+        .eq('address', normalized)
         .order('verified_at', { ascending: false })
         .limit(1)
         .single();
@@ -51,13 +78,13 @@ export function useWorldId(address?: string) {
           credentialType: data.credential_type,
           verifiedAt: data.verified_at,
         });
-      } else {
-        setState((s) => ({ ...s, verified: false, loading: false }));
+        return;
       }
     } catch {
-      // Table may not exist yet or no rows — treat as unverified
-      setState((s) => ({ ...s, verified: false, loading: false }));
+      // Table may not exist — that's fine
     }
+
+    setState((s) => ({ ...s, verified: false, loading: false }));
   }, [address]);
 
   useEffect(() => {

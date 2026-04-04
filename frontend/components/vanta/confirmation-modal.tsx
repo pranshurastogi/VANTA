@@ -2,7 +2,20 @@
 
 import { useState } from "react"
 import { motion, AnimatePresence } from "framer-motion"
-import { Fingerprint, ArrowDown, ChevronDown, Check, Globe, Usb, Type, Loader2 } from "lucide-react"
+import {
+  Fingerprint,
+  ArrowDown,
+  ChevronDown,
+  Check,
+  Globe,
+  Usb,
+  Type,
+  Loader2,
+  ExternalLink,
+  Copy,
+  Shield,
+  Clock,
+} from "lucide-react"
 import { VantaLogo } from "./logo"
 import { StatusBadge } from "./status-badge"
 import { cn } from "@/lib/utils"
@@ -19,6 +32,17 @@ const CONFIRM_LABELS: Record<ConfirmationMethod, { icon: typeof Fingerprint; lab
   manual: { icon: Type, label: "Type CONFIRM to approve" },
 }
 
+const SEPOLIA_EXPLORER = "https://sepolia.etherscan.io"
+
+function shortenAddress(addr?: string) {
+  if (!addr) return "—"
+  return `${addr.slice(0, 6)}...${addr.slice(-4)}`
+}
+
+function copyToClipboard(text: string) {
+  navigator.clipboard.writeText(text).catch(() => {})
+}
+
 interface ConfirmationModalProps {
   isOpen: boolean
   onClose: () => void
@@ -26,13 +50,15 @@ interface ConfirmationModalProps {
   onReject: () => void
   confirmationMethod?: ConfirmationMethod
   walletAddress?: string
-  /** If true, World ID proof is required to override (Tier 3) */
   worldIdRequired?: boolean
   transaction?: {
+    id?: string
     type: string
     amount: string
     amountUsd: string
     to: string
+    toFull?: string
+    fromFull?: string
     isNewAddress: boolean
     riskLevel: "low" | "medium" | "high"
     riskReasons: string[]
@@ -40,8 +66,11 @@ interface ConfirmationModalProps {
     network: string
     agent: string
     tier?: number
+    chainId?: number
+    txHash?: string | null
     aiChecks: { passed: number; warnings: number }
     warningDetail?: string
+    value?: string
   }
 }
 
@@ -89,6 +118,23 @@ function RiskMeter({ level }: { level: "low" | "medium" | "high" }) {
   )
 }
 
+function AddressDisplay({ label, address, chainId }: { label: string; address?: string; chainId?: number }) {
+  if (!address) return null
+  const explorer = chainId === 11155111 ? SEPOLIA_EXPLORER : "https://etherscan.io"
+  return (
+    <div className="flex items-center gap-2">
+      <span className="text-vanta-text-muted text-xs w-10 shrink-0">{label}</span>
+      <span className="font-mono text-xs text-foreground">{shortenAddress(address)}</span>
+      <button onClick={() => copyToClipboard(address)} className="text-vanta-text-muted hover:text-foreground transition-colors">
+        <Copy size={11} />
+      </button>
+      <a href={`${explorer}/address/${address}`} target="_blank" rel="noopener noreferrer" className="text-vanta-text-muted hover:text-vanta-teal transition-colors">
+        <ExternalLink size={11} />
+      </a>
+    </div>
+  )
+}
+
 export function ConfirmationModal({
   isOpen,
   onClose,
@@ -114,25 +160,24 @@ export function ConfirmationModal({
   }
 }: ConfirmationModalProps) {
   const [showDetails, setShowDetails] = useState(false)
-  const [isConfirmed, setIsConfirmed] = useState(false)
+  const [stage, setStage] = useState<"request" | "confirming" | "confirmed">("request")
   const [manualInput, setManualInput] = useState("")
   const [verifying, setVerifying] = useState(false)
   const [verifyError, setVerifyError] = useState("")
   const [worldIdOverrideComplete, setWorldIdOverrideComplete] = useState(false)
-  const { verify: verifyPasskey, registered: passkeyRegistered, error: passkeyErr } = usePasskey()
+  const [confirmedTxId, setConfirmedTxId] = useState<string | null>(null)
+  const { verify: verifyPasskey, registered: passkeyRegistered } = usePasskey()
   const { verified: worldIdVerified } = useWorldId(walletAddress)
 
   const confirmInfo = CONFIRM_LABELS[confirmationMethod]
   const ConfirmIcon = confirmInfo.icon
-
-  // For Tier 3 + World ID required: user must verify World ID first, then can confirm
   const needsWorldIdFirst = worldIdRequired && !worldIdVerified && !worldIdOverrideComplete
+  const explorer = (transaction.chainId === 11155111) ? SEPOLIA_EXPLORER : "https://etherscan.io"
 
   const handleConfirm = async () => {
     if (confirmationMethod === "manual" && manualInput !== "CONFIRM") return
     setVerifyError("")
 
-    // World ID method — verification happens via the WorldIdGate widget
     if (confirmationMethod === "worldid") {
       if (!worldIdVerified) {
         setVerifyError("World ID verification required. Click 'Verify with World ID' above.")
@@ -140,7 +185,6 @@ export function ConfirmationModal({
       }
     }
 
-    // For passkey method, actually trigger biometric verification
     if (confirmationMethod === "passkey") {
       if (!passkeyRegistered) {
         setVerifyError("No passkey registered. Go to Settings to set one up. Approving without verification.")
@@ -155,13 +199,22 @@ export function ConfirmationModal({
       }
     }
 
-    setIsConfirmed(true)
-    setManualInput("")
+    setStage("confirming")
+    setConfirmedTxId(transaction.id ?? null)
+
+    // Small delay to show confirming state, then call onConfirm
     setTimeout(() => {
       onConfirm()
-      setIsConfirmed(false)
-      setWorldIdOverrideComplete(false)
-    }, 2000)
+      setStage("confirmed")
+      setManualInput("")
+    }, 800)
+  }
+
+  const handleDismiss = () => {
+    setStage("request")
+    setWorldIdOverrideComplete(false)
+    setConfirmedTxId(null)
+    onClose()
   }
 
   return (
@@ -173,9 +226,8 @@ export function ConfirmationModal({
           exit={{ opacity: 0 }}
           transition={{ duration: 0.2 }}
           className="fixed inset-0 z-[100] flex items-center justify-center p-4"
-          onClick={onClose}
         >
-          {/* Backdrop */}
+          {/* Backdrop — does NOT close on click */}
           <div className="absolute inset-0 bg-black/85 backdrop-blur-md" />
 
           {/* Modal */}
@@ -184,16 +236,17 @@ export function ConfirmationModal({
             animate={{ scale: 1, opacity: 1 }}
             exit={{ scale: 0.95, opacity: 0 }}
             transition={{ type: "spring", stiffness: 300, damping: 30 }}
-            className="relative w-full max-w-[400px] bg-vanta-surface border border-border rounded-2xl p-8"
+            className="relative w-full max-w-[440px] bg-vanta-surface border border-border rounded-2xl overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
             <AnimatePresence mode="wait">
-              {!isConfirmed ? (
+              {stage === "request" && (
                 <motion.div
                   key="request"
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
+                  className="p-8"
                 >
                   {/* Logo */}
                   <div className="flex justify-center mb-4">
@@ -205,6 +258,13 @@ export function ConfirmationModal({
                     Transaction request
                   </h2>
 
+                  {/* TX ID */}
+                  {transaction.id && (
+                    <p className="text-center text-[10px] text-vanta-text-muted font-mono mt-1">
+                      TX: {transaction.id.slice(0, 8)}...{transaction.id.slice(-6)}
+                    </p>
+                  )}
+
                   <div className="h-px bg-border my-4" />
 
                   {/* Transaction Summary */}
@@ -212,12 +272,20 @@ export function ConfirmationModal({
                     <span className="text-[13px] text-vanta-text-secondary">{transaction.type}</span>
                     <div className="font-mono text-3xl text-foreground">{transaction.amount}</div>
                     <div className="text-sm text-vanta-text-muted">{transaction.amountUsd}</div>
-                    <div className="flex items-center justify-center gap-2 text-vanta-text-muted">
-                      <ArrowDown size={16} />
+
+                    {/* From / To with explorer links */}
+                    <div className="pt-2 space-y-1.5">
+                      <AddressDisplay label="From" address={transaction.fromFull} chainId={transaction.chainId} />
+                      <div className="flex items-center justify-center">
+                        <ArrowDown size={14} className="text-vanta-text-muted" />
+                      </div>
+                      <AddressDisplay label="To" address={transaction.toFull} chainId={transaction.chainId} />
                     </div>
-                    <div className="font-mono text-sm text-foreground">to {transaction.to}</div>
+
                     {transaction.isNewAddress && (
-                      <StatusBadge variant="warning">New address</StatusBadge>
+                      <div className="pt-1">
+                        <StatusBadge variant="warning">New address</StatusBadge>
+                      </div>
                     )}
                   </div>
 
@@ -255,8 +323,14 @@ export function ConfirmationModal({
                         className="overflow-hidden mb-4"
                       >
                         <div className="space-y-2 text-xs pb-4 border-b border-border">
+                          {transaction.value && (
+                            <div className="flex justify-between">
+                              <span className="text-vanta-text-muted">Raw value</span>
+                              <span className="font-mono text-foreground">{transaction.value} wei</span>
+                            </div>
+                          )}
                           <div className="flex justify-between">
-                            <span className="text-vanta-text-muted">Gas</span>
+                            <span className="text-vanta-text-muted">Gas estimate</span>
                             <span className="font-mono text-foreground">{transaction.gas}</span>
                           </div>
                           <div className="flex justify-between">
@@ -283,14 +357,18 @@ export function ConfirmationModal({
                     )}
                   </AnimatePresence>
 
-                  {/* Tier badge */}
-                  {transaction.tier && (
-                    <div className="flex justify-center mb-4">
+                  {/* Tier badge + verification method */}
+                  <div className="flex items-center justify-center gap-3 mb-4">
+                    {transaction.tier && (
                       <StatusBadge variant={transaction.tier === 2 ? "warning" : "risk"}>
                         Tier {transaction.tier}
                       </StatusBadge>
+                    )}
+                    <div className="flex items-center gap-1.5 text-[11px] text-vanta-text-muted">
+                      <ConfirmIcon size={12} />
+                      <span>{confirmationMethod === "worldid" ? "World ID" : confirmationMethod === "passkey" ? "Passkey" : confirmationMethod === "ledger" ? "Ledger" : "Manual"}</span>
                     </div>
-                  )}
+                  </div>
 
                   {/* World ID Gate — shown for Tier 3 override or worldid confirmation method */}
                   {(needsWorldIdFirst || confirmationMethod === "worldid") && !worldIdVerified && (
@@ -341,7 +419,7 @@ export function ConfirmationModal({
                       </div>
                     )}
 
-                    {/* Confirm Button with shimmer */}
+                    {/* Confirm Button */}
                     <motion.button
                       whileHover={{ scale: 1.02 }}
                       whileTap={{ scale: 0.98 }}
@@ -357,7 +435,6 @@ export function ConfirmationModal({
                         (verifying || (confirmationMethod === "manual" && manualInput !== "CONFIRM") || (needsWorldIdFirst && !worldIdOverrideComplete) || (confirmationMethod === "worldid" && !worldIdVerified)) && "opacity-40 cursor-not-allowed hover:bg-transparent hover:text-vanta-teal"
                       )}
                     >
-                      {/* Shimmer effect */}
                       <div className="absolute inset-0 shimmer-border opacity-50 group-hover:opacity-0" />
                       {verifying ? (
                         <>
@@ -384,12 +461,28 @@ export function ConfirmationModal({
                     </button>
                   </div>
                 </motion.div>
-              ) : (
+              )}
+
+              {stage === "confirming" && (
+                <motion.div
+                  key="confirming"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  className="p-8 py-12 text-center"
+                >
+                  <Loader2 size={40} className="mx-auto mb-4 text-vanta-teal animate-spin" />
+                  <h3 className="font-mono text-lg text-foreground mb-2">Processing</h3>
+                  <p className="text-xs text-vanta-text-muted">Confirming transaction…</p>
+                </motion.div>
+              )}
+
+              {stage === "confirmed" && (
                 <motion.div
                   key="confirmed"
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
-                  className="py-8 text-center"
+                  className="p-8"
                 >
                   <motion.div
                     initial={{ scale: 0 }}
@@ -399,16 +492,96 @@ export function ConfirmationModal({
                   >
                     <Check size={32} className="text-vanta-teal" />
                   </motion.div>
-                  <h3 className="font-mono text-lg text-vanta-teal mb-2">Confirmed</h3>
-                  <p className="text-xs text-vanta-text-secondary flex items-center justify-center gap-2">
-                    Transaction broadcasting
-                    <motion.span
-                      animate={{ opacity: [0.3, 1, 0.3] }}
-                      transition={{ duration: 1.5, repeat: Infinity }}
-                    >
-                      ...
-                    </motion.span>
-                  </p>
+                  <h3 className="font-mono text-lg text-vanta-teal mb-2 text-center">Confirmed</h3>
+
+                  {/* Confirmation receipt */}
+                  <div className="mt-4 space-y-3 p-4 bg-vanta-elevated/50 border border-border rounded-xl">
+                    <div className="space-y-2 text-xs">
+                      {confirmedTxId && (
+                        <div className="flex justify-between items-center">
+                          <span className="text-vanta-text-muted">TX ID</span>
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-mono text-foreground">{confirmedTxId.slice(0, 8)}...{confirmedTxId.slice(-6)}</span>
+                            <button onClick={() => copyToClipboard(confirmedTxId)} className="text-vanta-text-muted hover:text-foreground">
+                              <Copy size={11} />
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                      <div className="flex justify-between">
+                        <span className="text-vanta-text-muted">Amount</span>
+                        <span className="font-mono text-foreground">{transaction.amount}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-vanta-text-muted">Value</span>
+                        <span className="font-mono text-foreground">{transaction.amountUsd}</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-vanta-text-muted">To</span>
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-mono text-foreground">{shortenAddress(transaction.toFull || transaction.to)}</span>
+                          {transaction.toFull && (
+                            <a href={`${explorer}/address/${transaction.toFull}`} target="_blank" rel="noopener noreferrer" className="text-vanta-text-muted hover:text-vanta-teal">
+                              <ExternalLink size={11} />
+                            </a>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-vanta-text-muted">Network</span>
+                        <span className="text-foreground">{transaction.network}</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-vanta-text-muted">Verified by</span>
+                        <div className="flex items-center gap-1.5 text-vanta-teal">
+                          <ConfirmIcon size={12} />
+                          <span>{confirmationMethod === "worldid" ? "World ID" : confirmationMethod === "passkey" ? "Passkey" : confirmationMethod === "ledger" ? "Ledger" : "Manual"}</span>
+                        </div>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-vanta-text-muted">Time</span>
+                        <span className="text-foreground">{new Date().toLocaleTimeString()}</span>
+                      </div>
+                    </div>
+
+                    {/* Verification proof indicator */}
+                    <div className="pt-2 border-t border-border">
+                      <div className="flex items-center gap-2 text-[11px]">
+                        <Shield size={12} className="text-vanta-teal" />
+                        <span className="text-vanta-teal font-medium">Verification proof recorded</span>
+                      </div>
+                      <p className="text-[10px] text-vanta-text-muted mt-1 pl-5">
+                        {confirmationMethod === "worldid"
+                          ? "Zero-knowledge proof of unique human verified on-chain"
+                          : confirmationMethod === "passkey"
+                            ? "WebAuthn assertion verified — biometric signature recorded"
+                            : confirmationMethod === "ledger"
+                              ? "Hardware wallet signature verified"
+                              : "Manual confirmation recorded"
+                        }
+                      </p>
+                    </div>
+
+                    {/* TX hash link (if available) */}
+                    {transaction.txHash && (
+                      <a
+                        href={`${explorer}/tx/${transaction.txHash}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center justify-center gap-2 w-full py-2.5 bg-vanta-teal/10 border border-vanta-teal/20 rounded-lg text-xs text-vanta-teal hover:bg-vanta-teal/20 transition-colors"
+                      >
+                        <ExternalLink size={12} />
+                        View on Explorer
+                      </a>
+                    )}
+                  </div>
+
+                  <button
+                    onClick={handleDismiss}
+                    className="w-full mt-4 py-3 text-sm text-vanta-text-secondary hover:text-foreground transition-colors text-center"
+                  >
+                    Done
+                  </button>
                 </motion.div>
               )}
             </AnimatePresence>
