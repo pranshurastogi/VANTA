@@ -44,9 +44,11 @@ VANTA uses Dynamic at **three layers**:
 
 | Layer | Dynamic Feature | Purpose |
 |-------|----------------|---------|
-| **Frontend** | SDK React Core (`@dynamic-labs/sdk-react-core`) | Wallet connection, auth, account management |
+| **Frontend** | Vanilla JS SDK (`@dynamic-labs-sdk/client` + `@dynamic-labs-sdk/evm`) | Wallet connection, auth, account management |
 | **API** | Policy API (REST) | Sync user-defined rules to TEE-enforced signing policies |
 | **Backend** | Wallet SDK (`@dynamic-labs-wallet/node-evm`) | Server-side 2-of-2 threshold signature wallet |
+
+> **⚠️ Important:** VANTA does **not** use Dynamic's React SDK (`@dynamic-labs/sdk-react-core`) or `@dynamic-labs/ethereum`. While both appear in `package.json`, they are **never imported** in source code. The frontend is built entirely on Dynamic's framework-agnostic vanilla JavaScript SDK (`@dynamic-labs-sdk/client`), with a custom React context wrapper built in-house.
 
 ```
 User ──► Dynamic SDK (browser) ──► Wallet Connected
@@ -95,6 +97,8 @@ sequenceDiagram
 ---
 
 ## Frontend Integration
+
+> **SDK choice:** VANTA uses Dynamic's **vanilla JavaScript SDK** (`@dynamic-labs-sdk/client`) rather than the React SDK (`@dynamic-labs/sdk-react-core`). This is intentional — it gives VANTA full control over the wallet lifecycle and allows a custom React context that integrates tightly with the app's state management, Supabase, and network switching logic.
 
 ### SDK Client Initialization
 
@@ -852,20 +856,29 @@ Common errors:
 
 ## SDK Version Reference
 
-### Frontend
+### Frontend (actively imported in source code)
 
-| Package | Version | Purpose |
-|---------|---------|---------|
-| `@dynamic-labs/sdk-react-core` | `^4.75.0` | React integration, wallet connection |
-| `@dynamic-labs/ethereum` | `^4.75.0` | Ethereum chain support |
-| `@dynamic-labs-sdk/evm` | `^0.23.2` | EVM extension for `createDynamicClient` |
+| Package | Version | Imported In | Purpose |
+|---------|---------|-------------|---------|
+| `@dynamic-labs-sdk/client` | `^0.23.2` | `client.ts`, `context.tsx`, `wallet-connect-modal.tsx` | Core vanilla JS SDK — `createDynamicClient`, auth, wallet management |
+| `@dynamic-labs-sdk/client/waas` | `^0.23.2` | `wallet-connect-modal.tsx` | WaaS functions — `getChainsMissingWaasWalletAccounts`, `createWaasWalletAccounts` |
+| `@dynamic-labs-sdk/evm` | `^0.23.2` | `client.ts` | EVM chain extension — `addEvmExtension` |
+
+### Frontend (in `package.json` but NOT imported — unused)
+
+| Package | Version | Notes |
+|---------|---------|-------|
+| `@dynamic-labs/sdk-react-core` | `^4.75.0` | ❌ Never imported. VANTA uses the vanilla JS SDK instead. |
+| `@dynamic-labs/ethereum` | `^4.75.0` | ❌ Never imported. EVM support comes via `@dynamic-labs-sdk/evm`. |
+
+> These two packages may be vestigial from an earlier integration approach. They can safely be removed from `package.json` without affecting functionality.
 
 ### Backend
 
 | Package | Version | Purpose |
 |---------|---------|---------|
-| `@dynamic-labs-wallet/core` | `^0.0.322` | Core wallet types (ThresholdSignatureScheme) |
-| `@dynamic-labs-wallet/node-evm` | `^0.0.322` | Server-side EVM wallet client |
+| `@dynamic-labs-wallet/core` | `^0.0.322` | Core wallet types (`ThresholdSignatureScheme`) |
+| `@dynamic-labs-wallet/node-evm` | `^0.0.322` | Server-side EVM wallet client (`DynamicEvmWalletClient`) |
 | `viem` | `^2.47.6` | Transaction preparation, wallet client, RPC |
 
 ---

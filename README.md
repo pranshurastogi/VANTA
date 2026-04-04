@@ -257,7 +257,7 @@ Score thresholds: `<30` approve · `30–69` flag · `≥70` block
 |-------|-----------|
 | **Frontend** | Next.js 16, React 19, TypeScript, Tailwind CSS 4, Framer Motion |
 | **UI Components** | Radix UI primitives, Lucide icons, Recharts |
-| **Auth & Wallets** | Dynamic SDK (`@dynamic-labs/sdk-react-core`, WaaS) |
+| **Auth & Wallets** | Dynamic vanilla JS SDK (`@dynamic-labs-sdk/client`, `@dynamic-labs-sdk/evm`, WaaS) |
 | **Database** | Supabase (PostgreSQL + Realtime + Row Level Security) |
 | **Backend** | Node.js, viem, Dynamic Wallet SDK (TSS) |
 | **Identity** | World ID (proof of humanity), ENS (on-chain names) |
