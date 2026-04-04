@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useCallback } from "react"
+import { useState, useCallback, useMemo } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import {
   Bot,
@@ -37,6 +37,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { cn } from "@/lib/utils"
 import { useUser } from "@/hooks/useUser"
+import { useRules, type DbRule } from "@/hooks/useRules"
 import { useDynamic } from "@/lib/dynamic/context"
 
 // ─── Types ─────────────────────────────────────────────────────────────────
@@ -335,6 +336,65 @@ const presets: Preset[] = [
   },
 ]
 
+function normalizeAddress(value: unknown): string | null {
+  if (typeof value !== "string") return null
+  const trimmed = value.trim()
+  return trimmed ? trimmed.toLowerCase() : null
+}
+
+function readAddresses(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return []
+  return raw
+    .map((entry) => {
+      if (typeof entry === "string") return normalizeAddress(entry)
+      if (entry && typeof entry === "object" && "address" in entry) {
+        return normalizeAddress((entry as { address?: unknown }).address)
+      }
+      return null
+    })
+    .filter((v): v is string => !!v)
+}
+
+function inferPolicyTierForPreset(
+  preset: Preset,
+  rules: DbRule[],
+  ethPriceUsd = 2400,
+): { tier: 1 | 2 | 3; reason: string } {
+  const txUsd = Number.parseFloat(preset.eth || "0") * ethPriceUsd
+  const calldata = preset.data ?? ""
+  const to = preset.to.toLowerCase()
+
+  const active = rules.filter((rule) => rule.enabled)
+
+  for (const rule of active) {
+    if (rule.type === "blacklist") {
+      const blocked = readAddresses(rule.config?.["addresses"])
+      if (blocked.includes(to)) return { tier: 3, reason: "Blacklisted destination" }
+    }
+    if (rule.type === "block_unlimited_approval") {
+      const maxUint = "f".repeat(64)
+      if (calldata.toLowerCase().startsWith("0x095ea7b3") && calldata.toLowerCase().includes(maxUint)) {
+        return { tier: 3, reason: "Unlimited approval blocked" }
+      }
+    }
+  }
+
+  const tier2Reasons: string[] = []
+  for (const rule of active) {
+    if (rule.type === "per_tx_limit") {
+      const limit = Number(rule.config?.["amount"] ?? 0)
+      if (limit > 0 && txUsd > limit) tier2Reasons.push(`Above per-tx limit ($${limit})`)
+    }
+    if (rule.type === "whitelist") {
+      const allowed = readAddresses(rule.config?.["addresses"])
+      if (allowed.length > 0 && !allowed.includes(to)) tier2Reasons.push("Destination not whitelisted")
+    }
+  }
+
+  if (tier2Reasons.length > 0) return { tier: 2, reason: tier2Reasons[0] }
+  return { tier: 1, reason: "Within configured policy rules" }
+}
+
 // ─── Tier colors ───────────────────────────────────────────────────────────
 
 const TIER_COLORS = {
@@ -561,6 +621,7 @@ function pipelineSteps(skipAi: boolean): SimulationStep[] {
 function AgentSimulator() {
   const { wallet } = useDynamic()
   const { user } = useUser()
+  const { rules } = useRules(user?.id)
   const [to, setTo] = useState("")
   const [eth, setEth] = useState("")
   const [calldata, setCalldata] = useState("")
@@ -574,7 +635,7 @@ function AgentSimulator() {
   const [steps, setSteps] = useState<SimulationStep[]>([])
   const [detailModal, setDetailModal] = useState<SimulationResult | null>(null)
   /** When on, submit uses policy engine only — no Gemini / AI scanner on the server */
-  const [skipAiScan, setSkipAiScan] = useState(false)
+  const [skipAiScan, setSkipAiScan] = useState(true)
 
   const address = wallet?.address
 
@@ -685,6 +746,13 @@ function AgentSimulator() {
   }
 
   const filteredPresets = activeCategory === "all" ? presets : presets.filter((p) => p.category === activeCategory)
+  const presetPolicyTier = useMemo(
+    () =>
+      Object.fromEntries(
+        presets.map((preset) => [preset.label, inferPolicyTierForPreset(preset, rules)])
+      ) as Record<string, { tier: 1 | 2 | 3; reason: string }>,
+    [rules]
+  )
 
   const tierInfo = result ? TIER_COLORS[result.tier as 1 | 2 | 3] : null
   const TierIcon = tierInfo?.icon ?? ShieldCheck
@@ -712,7 +780,7 @@ function AgentSimulator() {
               className="data-[state=checked]:bg-vanta-amber shrink-0"
             />
             <span className="text-[11px] text-vanta-text-muted max-w-[140px] sm:max-w-none text-right sm:text-left">
-              Skip AI scan
+              Rule-first mode (skip AI scan)
             </span>
           </label>
           <div className="flex items-center gap-2 text-[10px] text-vanta-text-muted">
@@ -775,7 +843,9 @@ function AgentSimulator() {
             {/* Preset grid */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
               {filteredPresets.map((p) => {
-                const tierC = TIER_COLORS[p.expectedTier]
+                const expected = presetPolicyTier[p.label]
+                const previewTier = expected?.tier ?? p.expectedTier
+                const tierC = TIER_COLORS[previewTier]
                 return (
                   <button
                     key={p.label}
@@ -787,13 +857,16 @@ function AgentSimulator() {
                         {p.category}
                       </span>
                       <span className={cn("ml-auto px-1.5 py-0.5 rounded text-[9px] font-medium", tierC.bg, tierC.text)}>
-                        T{p.expectedTier}
+                        T{previewTier}
                       </span>
                     </div>
                     <span className="text-[12px] text-foreground leading-tight font-medium group-hover:text-vanta-teal transition-colors">
                       {p.label}
                     </span>
                     <span className="text-[10px] text-vanta-text-muted leading-tight">{p.description}</span>
+                    <span className="text-[9px] text-vanta-text-secondary">
+                      Policy preview: {expected?.reason ?? "Using baseline preset behavior"}
+                    </span>
                     {p.attackType && (
                       <span className="flex items-center gap-1 text-[9px] text-vanta-red mt-0.5">
                         <Bug size={9} />

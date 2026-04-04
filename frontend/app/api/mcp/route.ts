@@ -6,6 +6,13 @@ import { evaluateTransaction } from '@/lib/policyEngine';
 import { scanTransaction } from '@/lib/aiScanner';
 
 const ETH_PRICE_USD = 2400;
+const SKIPPED_SCAN_RESULT = {
+  riskScore: 0,
+  recommendation: 'approve' as const,
+  reasoning: 'AI scan skipped; verdict reflects policy engine output only.',
+  checks: [],
+  model: 'skipped',
+};
 
 function createVantaServer() {
   const server = new McpServer({
@@ -138,9 +145,18 @@ function createVantaServer() {
       value: z.string().describe('Amount in wei (e.g. "1000000000000000000" for 1 ETH)'),
       data: z.string().optional().describe('Calldata for contract interactions'),
       chain_id: z.number().default(11155111).describe('Chain ID (default: 11155111 Sepolia)'),
+      skip_ai_scan: z.boolean().default(true).describe('If true, use policy-only mode (recommended for deterministic simulation)'),
     },
-    async ({ from, to, value, data, chain_id }) => {
-      return await processTransactionViaPipeline({ from, to, value, data, chainId: chain_id, agentId: 'mcp-agent' });
+    async ({ from, to, value, data, chain_id, skip_ai_scan }) => {
+      return await processTransactionViaPipeline({
+        from,
+        to,
+        value,
+        data,
+        chainId: chain_id,
+        agentId: 'mcp-agent',
+        skipAiScan: skip_ai_scan,
+      });
     }
   );
 
@@ -151,10 +167,18 @@ function createVantaServer() {
       from: z.string().describe('Your wallet address'),
       to: z.string().describe('Recipient address'),
       amount_eth: z.string().describe('Amount of ETH to send (e.g. "0.1")'),
+      skip_ai_scan: z.boolean().default(true).describe('If true, use policy-only mode (recommended for deterministic simulation)'),
     },
-    async ({ from, to, amount_eth }) => {
+    async ({ from, to, amount_eth, skip_ai_scan }) => {
       const valueWei = String(Math.round(parseFloat(amount_eth) * 1e18));
-      return await processTransactionViaPipeline({ from, to, value: valueWei, chainId: 11155111, agentId: 'mcp-agent' });
+      return await processTransactionViaPipeline({
+        from,
+        to,
+        value: valueWei,
+        chainId: 11155111,
+        agentId: 'mcp-agent',
+        skipAiScan: skip_ai_scan,
+      });
     }
   );
 
@@ -169,13 +193,14 @@ async function processTransactionViaPipeline(input: {
   data?: string;
   chainId: number;
   agentId: string;
+  skipAiScan?: boolean;
 }) {
-  const { from, to, value, data, chainId, agentId } = input;
+  const { from, to, value, data, chainId, agentId, skipAiScan = true } = input;
 
   // 1. Resolve user
   const { data: user } = await supabaseAdmin
     .from('users')
-    .select('id')
+    .select('id, world_id_verified')
     .eq('address', from.toLowerCase())
     .single();
 
@@ -192,12 +217,18 @@ async function processTransactionViaPipeline(input: {
 
   // 3. Daily spend
   const today = new Date().toISOString().split('T')[0];
-  const { data: spend } = await supabaseAdmin
-    .from('daily_spend')
-    .select('total_usd')
-    .eq('user_id', user.id)
-    .eq('date', today)
-    .single();
+  let spend: { total_usd: number } | null = null;
+  try {
+    const res = await supabaseAdmin
+      .from('daily_spend')
+      .select('total_usd')
+      .eq('user_id', user.id)
+      .eq('date', today)
+      .single();
+    spend = res.data;
+  } catch {
+    // table may not exist yet
+  }
 
   const dailySpendUsd = Number(spend?.total_usd ?? 0);
   const txValueUsd = (Number(value) / 1e18) * ETH_PRICE_USD;
@@ -207,11 +238,14 @@ async function processTransactionViaPipeline(input: {
     { from, to, value, data, chainId },
     rules ?? [],
     dailySpendUsd,
-    ETH_PRICE_USD
+    ETH_PRICE_USD,
+    !!user.world_id_verified
   );
 
   // 5. AI scanner
-  const scanResult = await scanTransaction({ from, to, value, data, chainId, agentId }, ETH_PRICE_USD);
+  const scanResult = skipAiScan
+    ? SKIPPED_SCAN_RESULT
+    : await scanTransaction({ from, to, value, data, chainId, agentId }, ETH_PRICE_USD);
 
   // 6. Scanner can escalate
   let finalTier = policyResult.tier;
