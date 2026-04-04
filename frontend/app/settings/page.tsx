@@ -20,6 +20,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { StatusBadge } from "@/components/vanta/status-badge"
 import { cn } from "@/lib/utils"
+import { WorldIdGate } from "@/components/vanta/world-id-gate"
 
 // ─── Shared UI ────────────────────────────────────────────
 
@@ -233,10 +234,12 @@ export default function SettingsPage() {
               </div>
             </SettingsRow>
 
-            <SettingsRow label="World ID" description="Proves a human controls this daemon">
-              <StatusBadge variant="warning">Not verified</StatusBadge>
-            </SettingsRow>
           </div>
+        </SettingsSection>
+
+        {/* ── World ID Verification ── */}
+        <SettingsSection title="World ID — Proof of Human">
+          <WorldIdGate address={address} />
         </SettingsSection>
 
         {/* ── Passkey Setup ── */}

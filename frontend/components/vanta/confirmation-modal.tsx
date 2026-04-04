@@ -7,6 +7,8 @@ import { VantaLogo } from "./logo"
 import { StatusBadge } from "./status-badge"
 import { cn } from "@/lib/utils"
 import { usePasskey } from "@/hooks/usePasskey"
+import { WorldIdGate } from "./world-id-gate"
+import { useWorldId } from "@/hooks/useWorldId"
 
 type ConfirmationMethod = "passkey" | "worldid" | "ledger" | "manual"
 
@@ -23,6 +25,9 @@ interface ConfirmationModalProps {
   onConfirm: () => void
   onReject: () => void
   confirmationMethod?: ConfirmationMethod
+  walletAddress?: string
+  /** If true, World ID proof is required to override (Tier 3) */
+  worldIdRequired?: boolean
   transaction?: {
     type: string
     amount: string
@@ -90,6 +95,8 @@ export function ConfirmationModal({
   onConfirm,
   onReject,
   confirmationMethod = "passkey",
+  walletAddress,
+  worldIdRequired = false,
   transaction = {
     type: "Send",
     amount: "1.2 ETH",
@@ -111,19 +118,31 @@ export function ConfirmationModal({
   const [manualInput, setManualInput] = useState("")
   const [verifying, setVerifying] = useState(false)
   const [verifyError, setVerifyError] = useState("")
+  const [worldIdOverrideComplete, setWorldIdOverrideComplete] = useState(false)
   const { verify: verifyPasskey, registered: passkeyRegistered, error: passkeyErr } = usePasskey()
+  const { verified: worldIdVerified } = useWorldId(walletAddress)
 
   const confirmInfo = CONFIRM_LABELS[confirmationMethod]
   const ConfirmIcon = confirmInfo.icon
+
+  // For Tier 3 + World ID required: user must verify World ID first, then can confirm
+  const needsWorldIdFirst = worldIdRequired && !worldIdVerified && !worldIdOverrideComplete
 
   const handleConfirm = async () => {
     if (confirmationMethod === "manual" && manualInput !== "CONFIRM") return
     setVerifyError("")
 
+    // World ID method — verification happens via the WorldIdGate widget
+    if (confirmationMethod === "worldid") {
+      if (!worldIdVerified) {
+        setVerifyError("World ID verification required. Click 'Verify with World ID' above.")
+        return
+      }
+    }
+
     // For passkey method, actually trigger biometric verification
     if (confirmationMethod === "passkey") {
       if (!passkeyRegistered) {
-        // No passkey registered — fall through as demo (show warning but allow)
         setVerifyError("No passkey registered. Go to Settings to set one up. Approving without verification.")
       } else {
         setVerifying(true)
@@ -141,6 +160,7 @@ export function ConfirmationModal({
     setTimeout(() => {
       onConfirm()
       setIsConfirmed(false)
+      setWorldIdOverrideComplete(false)
     }, 2000)
   }
 
@@ -272,6 +292,34 @@ export function ConfirmationModal({
                     </div>
                   )}
 
+                  {/* World ID Gate — shown for Tier 3 override or worldid confirmation method */}
+                  {(needsWorldIdFirst || confirmationMethod === "worldid") && !worldIdVerified && (
+                    <div className="mb-4 p-3 bg-vanta-elevated/50 border border-border rounded-xl space-y-2">
+                      <div className="flex items-center gap-2 text-xs text-vanta-amber mb-1">
+                        <Globe size={14} />
+                        <span className="font-medium">
+                          {needsWorldIdFirst
+                            ? "Proof of Human required to override blocked transaction"
+                            : "Verify with World ID to confirm"
+                          }
+                        </span>
+                      </div>
+                      <WorldIdGate
+                        address={walletAddress}
+                        compact
+                        onVerified={() => setWorldIdOverrideComplete(true)}
+                      />
+                    </div>
+                  )}
+
+                  {/* World ID verified badge */}
+                  {(confirmationMethod === "worldid" || worldIdOverrideComplete) && worldIdVerified && (
+                    <div className="mb-4 p-2.5 bg-vanta-teal/10 border border-vanta-teal/20 rounded-xl flex items-center gap-2 text-xs text-vanta-teal">
+                      <Check size={14} />
+                      Human verified — you can now approve this transaction
+                    </div>
+                  )}
+
                   {/* Actions */}
                   <div className="space-y-3">
                     {/* Manual confirmation input */}
@@ -298,10 +346,15 @@ export function ConfirmationModal({
                       whileHover={{ scale: 1.02 }}
                       whileTap={{ scale: 0.98 }}
                       onClick={handleConfirm}
-                      disabled={verifying || (confirmationMethod === "manual" && manualInput !== "CONFIRM")}
+                      disabled={
+                        verifying ||
+                        (confirmationMethod === "manual" && manualInput !== "CONFIRM") ||
+                        (needsWorldIdFirst && !worldIdOverrideComplete) ||
+                        (confirmationMethod === "worldid" && !worldIdVerified)
+                      }
                       className={cn(
                         "relative w-full h-14 rounded-xl border border-vanta-teal text-vanta-teal flex items-center justify-center gap-3 overflow-hidden group hover:bg-vanta-teal hover:text-vanta-bg transition-colors",
-                        (verifying || (confirmationMethod === "manual" && manualInput !== "CONFIRM")) && "opacity-40 cursor-not-allowed hover:bg-transparent hover:text-vanta-teal"
+                        (verifying || (confirmationMethod === "manual" && manualInput !== "CONFIRM") || (needsWorldIdFirst && !worldIdOverrideComplete) || (confirmationMethod === "worldid" && !worldIdVerified)) && "opacity-40 cursor-not-allowed hover:bg-transparent hover:text-vanta-teal"
                       )}
                     >
                       {/* Shimmer effect */}

@@ -20,6 +20,10 @@ export interface PolicyResult {
   tier: 1 | 2 | 3
   reason: string
   matchedRules: string[]
+  /** Whether World ID is required to proceed (Tier 3 override) */
+  worldIdRequired?: boolean
+  /** Adjusted daily limit based on World ID verification */
+  effectiveDailyLimit?: number
 }
 
 // Detect unlimited ERC-20 approve (uint256 max)
@@ -30,11 +34,20 @@ function isUnlimitedApproval(data?: string): boolean {
   return data.startsWith('0x095ea7b3') && data.toLowerCase().includes(MAX_UINT256)
 }
 
+/**
+ * World ID verification multiplier for daily limits.
+ * Verified humans get 2x the configured daily limit — this is a REAL constraint
+ * that makes World ID meaningfully change the system behavior.
+ */
+const WORLD_ID_LIMIT_MULTIPLIER = 2
+
 export function evaluateTransaction(
   tx: TxInput,
   rules: DbRule[],
   dailySpendUsd: number,
-  ethPriceUsd: number
+  ethPriceUsd: number,
+  /** Whether the user has a verified World ID */
+  worldIdVerified = false,
 ): PolicyResult {
   const txValueEth = Number(tx.value) / 1e18
   const txValueUsd = txValueEth * ethPriceUsd
@@ -65,11 +78,17 @@ export function evaluateTransaction(
       }
 
       case 'daily_limit': {
-        const limit = Number(rule.config.amount ?? 0)
-        if (dailySpendUsd + txValueUsd > limit) {
+        const baseLimit = Number(rule.config.amount ?? 0)
+        // World ID verified humans get 2x daily limit — real constraint
+        const effectiveLimit = worldIdVerified
+          ? baseLimit * WORLD_ID_LIMIT_MULTIPLIER
+          : baseLimit
+        if (dailySpendUsd + txValueUsd > effectiveLimit) {
           matchedRules.push(rule.id)
           tier = Math.max(tier, 2) as 1 | 2 | 3
-          reason = `Daily limit $${limit} would be exceeded ($${(dailySpendUsd + txValueUsd).toFixed(2)})`
+          reason = worldIdVerified
+            ? `Daily limit $${effectiveLimit} (2x World ID bonus) would be exceeded ($${(dailySpendUsd + txValueUsd).toFixed(2)})`
+            : `Daily limit $${baseLimit} would be exceeded ($${(dailySpendUsd + txValueUsd).toFixed(2)}). Verify with World ID for 2x limit.`
         }
         break
       }
@@ -131,5 +150,10 @@ export function evaluateTransaction(
     }
   }
 
-  return { tier, reason, matchedRules }
+  // Tier 3 transactions require World ID proof to override.
+  // Without World ID, the transaction stays permanently blocked.
+  // This is the core constraint: only proven humans can unblock critical txs.
+  const worldIdRequired = tier === 3 && !worldIdVerified
+
+  return { tier, reason, matchedRules, worldIdRequired }
 }

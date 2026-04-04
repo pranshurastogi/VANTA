@@ -96,7 +96,9 @@ export default function DashboardPage() {
         onClose={() => rejectTx(pendingTx!.id)}
         onConfirm={() => confirmTx(pendingTx!.id, confirmationMethod)}
         onReject={() => rejectTx(pendingTx!.id)}
+        walletAddress={user?.address}
         confirmationMethod={confirmationMethod}
+        worldIdRequired={pendingTx?.tier === 3}
         transaction={pendingTx ? {
           type: pendingTx.calldata ? "Contract call" : "Transfer",
           amount: `${(Number(pendingTx.value) / 1e18).toFixed(4)} ETH`,

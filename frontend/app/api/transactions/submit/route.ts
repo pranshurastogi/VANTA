@@ -20,12 +20,11 @@ export async function POST(req: NextRequest) {
   }
 
   // 1. Resolve user — auto-register if missing
-  // Try with email column first, fall back without it if column doesn't exist
-  let user: { id: string; email?: string | null } | null = null;
+  let user: { id: string; email?: string | null; world_id_verified?: boolean } | null = null;
 
   const { data: found, error: userErr } = await supabaseAdmin
     .from('users')
-    .select('id')
+    .select('id, world_id_verified')
     .eq('address', from.toLowerCase())
     .single();
 
@@ -37,7 +36,7 @@ export async function POST(req: NextRequest) {
   }
 
   if (found) {
-    user = found;
+    user = { ...found, world_id_verified: !!(found as Record<string, unknown>).world_id_verified };
     // Try to fetch email (column may not exist)
     try {
       const { data: withEmail } = await supabaseAdmin
@@ -91,12 +90,14 @@ export async function POST(req: NextRequest) {
   const dailySpendUsd = Number(spend?.total_usd ?? 0);
   const txValueUsd = (Number(value) / 1e18) * ETH_PRICE_USD;
 
-  // 4. Policy engine
+  // 4. Policy engine — World ID verified users get higher limits + can override Tier 3
+  const worldIdVerified = !!user?.world_id_verified;
   const policyResult = evaluateTransaction(
     { from, to, value: String(value), data, chainId },
     rules ?? [],
     dailySpendUsd,
-    ETH_PRICE_USD
+    ETH_PRICE_USD,
+    worldIdVerified,
   );
 
   // 5. AI scanner
@@ -180,6 +181,8 @@ export async function POST(req: NextRequest) {
     txId: tx.id,
     tier: tx.tier,
     status: tx.status,
+    worldIdVerified,
+    worldIdRequired: policyResult.worldIdRequired,
     policyResult,
     scanResult,
   });
