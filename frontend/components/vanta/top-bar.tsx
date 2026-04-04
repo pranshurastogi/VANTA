@@ -38,7 +38,7 @@ export function TopBar({ title }: TopBarProps) {
       <div className="flex items-center justify-between h-full px-6 gap-4">
         <div className="flex items-center gap-3 min-w-0">
           <Link
-            href="/"
+            href="/dashboard"
             className="md:hidden shrink-0 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-vanta-teal"
             aria-label="VANTA home"
           >

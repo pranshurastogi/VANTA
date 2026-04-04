@@ -16,7 +16,7 @@ import { VantaWordmark } from "./logo"
 import { cn } from "@/lib/utils"
 
 const navItems = [
-  { href: "/", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/transactions", label: "Transactions", icon: ArrowUpDown },
   { href: "/rules", label: "Rules", icon: Shield },
   { href: "/scanner", label: "Scanner", icon: ScanEye },
@@ -46,7 +46,7 @@ export function Sidebar() {
     <aside className="fixed left-0 top-0 h-full w-60 bg-vanta-bg border-r border-border flex flex-col z-50">
       {/* Logo */}
       <div className="p-6">
-        <Link href="/" className="inline-block rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-vanta-teal">
+        <Link href="/dashboard" className="inline-block rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-vanta-teal">
           <VantaWordmark />
         </Link>
       </div>

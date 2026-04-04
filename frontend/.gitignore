@@ -7,8 +7,10 @@ __v0_jsx-dev-runtime.ts
 .vercel/
 next.user-config.*
 
-# Environment variables
+# Environment variables (repo root .gitignore also applies — never commit secrets)
 .env
+.env.*
+!.env.example
 .env*.local
 
 # Common ignores

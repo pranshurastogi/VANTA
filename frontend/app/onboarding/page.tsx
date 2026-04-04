@@ -401,7 +401,7 @@ export default function OnboardingPage() {
               Monitoring your wallet 24/7
             </p>
 
-            <Link href="/">
+            <Link href="/dashboard">
               <Button className="h-12 px-8 bg-vanta-teal text-vanta-bg hover:bg-vanta-teal/90 font-medium">
                 Go to dashboard
                 <ArrowRight size={18} className="ml-2" />

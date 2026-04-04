@@ -65,10 +65,27 @@ web_modules/
 # Yarn Integrity file
 .yarn-integrity
 
-# dotenv environment variable files
+# --- Environment & secrets (never commit real values) ---
 .env
 .env.*
 !.env.example
+!.env.sample
+# direnv, local overrides (also matched by .env.* but listed for clarity)
+.envrc
+.env*.local
+# Private keys, certs, and cloud credential blobs
+*.pem
+*.p12
+*.pfx
+*.cer
+*.crt
+id_rsa
+id_ed25519
+*credentials*.json
+serviceAccount*.json
+firebase-adminsdk*.json
+# Vercel link output (project/org metadata; keep out of git)
+.vercel/
 
 # parcel-bundler cache (https://parceljs.org/)
 .cache
@@ -137,3 +154,13 @@ dist
 # Vite logs files
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
+.mcp.json
+
+# OS / editor noise
+.DS_Store
+**/.DS_Store
+Thumbs.db
+
+# Supabase CLI local state (can include project refs / tokens)
+supabase/.temp/
+supabase/.branches/

@@ -13,7 +13,9 @@ import {
   Clock,
   ShieldOff,
   Zap,
-  Zap as DynamicIcon,
+  ShieldAlert,
+  Check,
+  Loader2,
 } from "lucide-react"
 import { DashboardLayout } from "@/components/vanta/dashboard-layout"
 import { Switch } from "@/components/ui/switch"
@@ -21,6 +23,8 @@ import { Slider } from "@/components/ui/slider"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
+import { useUser } from "@/hooks/useUser"
+import { useRules, type DbRule } from "@/hooks/useRules"
 
 // Known mainnet contract addresses for approved DeFi protocols
 const CONTRACT_ADDRESSES: Record<string, string[]> = {
@@ -30,243 +34,228 @@ const CONTRACT_ADDRESSES: Record<string, string[]> = {
   "1inch":       ["0x1111111254EEB25477B68fb85Ed929f73A960582"],
   "Lido":        ["0xae7ab96520DE3A18E5e111B5EaAb095312D7fE84"],
   "Curve":       ["0xD533a949740bb3306d119CC777fa900bA034cd52"],
+  "Uniswap V2":  ["0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45"],
 }
 
-// Rules that can be enforced via Dynamic's Policy API
-const DYNAMIC_COMPATIBLE = new Set(["2", "3", "4"])
+// Rule types that can sync to Dynamic Policy API (by DB type string)
+const DYNAMIC_COMPATIBLE = new Set(["per_tx_limit", "whitelist", "contract_whitelist", "blacklist"])
 
-interface RuleConfig {
-  limit?: number
-  addresses?: { address: string; label: string }[]
-  contracts?: { name: string; enabled: boolean }[]
-  from?: string
-  to?: string
-  timezone?: string
-  dynamicRuleId?: string  // ID returned by Dynamic Policy API
+// Human-readable labels for each DB rule type
+const RULE_LABELS: Record<string, { name: string; description: string }> = {
+  daily_limit:              { name: "Daily spending limit",           description: "Auto-approve transactions under this total per day" },
+  per_tx_limit:             { name: "Per-transaction limit",          description: "Require confirmation for any single transaction above this amount" },
+  whitelist:                { name: "Trusted addresses",              description: "Auto-approve transactions to these addresses" },
+  contract_whitelist:       { name: "Approved contracts",             description: "Allow interactions with verified DeFi protocols" },
+  blacklist:                { name: "Blocked addresses",              description: "Always block transactions to these addresses" },
+  block_unlimited_approval: { name: "Block unlimited token approvals", description: "Hard-block any ERC-20 approve() with max uint256" },
+  strip_calldata:           { name: "Strip personal data from calldata", description: "Remove names, emails, invoice numbers before broadcast" },
+  quiet_hours:              { name: "Quiet hours",                    description: "Require manual confirmation during these hours regardless of amount" },
 }
-
-interface Rule {
-  id: string
-  name: string
-  description: string
-  enabled: boolean
-  type: "limit" | "whitelist" | "block" | "time" | "custom"
-  config?: RuleConfig
-}
-
-const initialRules: Rule[] = [
-  {
-    id: "1",
-    name: "Daily spending limit",
-    description: "Auto-approve transactions under this amount per day",
-    enabled: true,
-    type: "limit",
-    config: { limit: 500 }
-  },
-  {
-    id: "2",
-    name: "Per-transaction limit",
-    description: "Require confirmation for any single transaction above this amount",
-    enabled: true,
-    type: "limit",
-    config: { limit: 200 }
-  },
-  {
-    id: "3",
-    name: "Trusted addresses",
-    description: "Auto-approve transactions to these addresses",
-    enabled: true,
-    type: "whitelist",
-    config: { 
-      addresses: [
-        { address: "0x8f2a...3b1c", label: "My Ledger" },
-        { address: "0x4d5e...7a8b", label: "Coinbase" },
-        { address: "0x2c3d...1e2f", label: "Family wallet" },
-      ] 
-    }
-  },
-  {
-    id: "4",
-    name: "Approved contracts",
-    description: "Allow interactions with verified DeFi protocols",
-    enabled: true,
-    type: "whitelist",
-    config: {
-      contracts: [
-        { name: "Uniswap V3", enabled: true },
-        { name: "Aave V3", enabled: true },
-        { name: "Compound", enabled: true },
-        { name: "1inch", enabled: true },
-        { name: "Lido", enabled: false },
-        { name: "Curve", enabled: false },
-      ]
-    }
-  },
-  {
-    id: "5",
-    name: "Block unlimited token approvals",
-    description: "Hard-block any ERC-20 approve() with max uint256",
-    enabled: true,
-    type: "block",
-  },
-  {
-    id: "6",
-    name: "Strip personal data from calldata",
-    description: "Remove names, emails, invoice numbers before broadcast",
-    enabled: true,
-    type: "custom",
-  },
-  {
-    id: "7",
-    name: "Quiet hours",
-    description: "Require manual confirmation during these hours regardless of amount",
-    enabled: false,
-    type: "time",
-    config: { from: "02:00", to: "06:00", timezone: "UTC" }
-  },
-]
 
 const quickSetAmounts = [100, 250, 500, 1000, 2500]
 
+// Build the Dynamic policy payload from a DB rule
+function toDynamicPolicy(rule: DbRule) {
+  if (rule.type === "per_tx_limit") {
+    return {
+      chain: "EVM", chainIds: [1],
+      name: RULE_LABELS[rule.type].name,
+      ruleType: "allow",
+      addresses: [] as string[],
+      valueLimit: { maxPerCall: String(Math.round(((rule.config?.amount as number) ?? 0) * 1e18)) },
+    }
+  }
+  if (rule.type === "whitelist") {
+    const addrs = ((rule.config?.addresses ?? []) as { address: string }[]).map((a) => a.address)
+    return { chain: "EVM", chainIds: [1], name: RULE_LABELS[rule.type].name, ruleType: "allow", addresses: addrs }
+  }
+  if (rule.type === "contract_whitelist") {
+    const contracts = (rule.config?.contracts ?? []) as string[]
+    const addresses = contracts.flatMap((c) => CONTRACT_ADDRESSES[c] ?? [])
+    return { chain: "EVM", chainIds: [1], name: RULE_LABELS[rule.type].name, ruleType: "allow", addresses }
+  }
+  if (rule.type === "blacklist") {
+    const addrs = ((rule.config?.addresses ?? []) as { address: string }[]).map((a) => a.address)
+    return { chain: "EVM", chainIds: [1], name: RULE_LABELS[rule.type].name, ruleType: "deny", addresses: addrs }
+  }
+  return null
+}
+
 interface RuleCardProps {
-  rule: Rule
-  isDynamic: boolean
-  onToggle: (id: string) => void
-  onUpdate: (id: string, config: RuleConfig) => void
+  rule: DbRule
+  onToggle: (id: string, enabled: boolean) => void
+  onSave: (id: string, config: Record<string, unknown>) => Promise<void>
   onDelete: (id: string) => void
 }
 
-function RuleCard({ rule, isDynamic, onToggle, onUpdate, onDelete }: RuleCardProps) {
+function RuleCard({ rule, onToggle, onSave, onDelete }: RuleCardProps) {
   const [isExpanded, setIsExpanded] = useState(false)
+  const [localConfig, setLocalConfig] = useState<Record<string, unknown>>(rule.config)
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
+  const [newAddress, setNewAddress] = useState("")
+  const [newLabel, setNewLabel] = useState("")
+
+  const isDynamic = DYNAMIC_COMPATIBLE.has(rule.type)
+  const label = RULE_LABELS[rule.type] ?? { name: rule.type, description: "" }
+
+  const hasEditView = ["daily_limit", "per_tx_limit", "whitelist", "contract_whitelist", "blacklist", "quiet_hours"].includes(rule.type)
+
+  async function handleSave() {
+    setSaving(true)
+    await onSave(rule.id, localConfig)
+    setSaving(false)
+    setSaved(true)
+    setTimeout(() => setSaved(false), 2000)
+  }
+
+  function addAddressToList(field: string) {
+    if (!newAddress.trim()) return
+    const existing = (localConfig[field] ?? []) as { address: string; label: string }[]
+    setLocalConfig({ ...localConfig, [field]: [...existing, { address: newAddress.trim(), label: newLabel.trim() }] })
+    setNewAddress("")
+    setNewLabel("")
+  }
+
+  function removeAddressFromList(field: string, index: number) {
+    const existing = (localConfig[field] ?? []) as unknown[]
+    setLocalConfig({ ...localConfig, [field]: existing.filter((_, i) => i !== index) })
+  }
 
   const renderEditView = () => {
     switch (rule.type) {
-      case "limit":
+      case "daily_limit":
+      case "per_tx_limit": {
+        const amount = (localConfig.amount as number) ?? 0
         return (
           <div className="pt-4 space-y-4">
             <Slider
-              value={[rule.config?.limit || 0]}
+              value={[amount]}
               min={0}
-              max={rule.id === "1" ? 5000 : 10000}
+              max={rule.type === "daily_limit" ? 10000 : 5000}
               step={50}
-              onValueChange={([value]) => onUpdate(rule.id, { ...rule.config, limit: value })}
+              onValueChange={([v]) => setLocalConfig({ ...localConfig, amount: v })}
               className="[&_[role=slider]]:bg-white [&_[role=slider]]:border-2 [&_[role=slider]]:border-vanta-teal [&_[role=slider]]:w-5 [&_[role=slider]]:h-5 [&>span:first-child]:bg-vanta-elevated [&>span:first-child>span]:bg-vanta-teal"
             />
             <div className="flex items-center justify-between">
-              <span className="font-mono text-lg text-foreground">
-                ${rule.config?.limit?.toLocaleString()}
-              </span>
+              <span className="font-mono text-lg text-foreground">${amount.toLocaleString()}</span>
               <div className="flex gap-2">
-                {quickSetAmounts.map((amount) => (
+                {quickSetAmounts.map((a) => (
                   <button
-                    key={amount}
-                    onClick={() => onUpdate(rule.id, { ...rule.config, limit: amount })}
+                    key={a}
+                    onClick={() => setLocalConfig({ ...localConfig, amount: a })}
                     className={cn(
                       "px-3 py-1 rounded-full text-xs transition-colors",
-                      rule.config?.limit === amount
-                        ? "bg-vanta-teal/10 text-vanta-teal"
-                        : "bg-vanta-elevated text-vanta-text-muted hover:text-foreground"
+                      amount === a ? "bg-vanta-teal/10 text-vanta-teal" : "bg-vanta-elevated text-vanta-text-muted hover:text-foreground"
                     )}
                   >
-                    ${amount.toLocaleString()}
+                    ${a.toLocaleString()}
                   </button>
                 ))}
               </div>
             </div>
           </div>
         )
+      }
 
       case "whitelist":
-        if (rule.config?.addresses) {
-          return (
-            <div className="pt-4 space-y-3">
-              {rule.config.addresses.map((addr, index) => (
-                <div key={index} className="flex items-center gap-3 bg-vanta-elevated rounded-lg px-3 py-2">
-                  <span className="font-mono text-[13px] text-foreground">{addr.address}</span>
-                  <span className="text-xs text-vanta-text-muted">{addr.label}</span>
-                  <button 
-                    onClick={() => {
-                      const newAddresses = rule.config?.addresses?.filter((_, i) => i !== index)
-                      onUpdate(rule.id, { ...rule.config, addresses: newAddresses })
-                    }}
-                    className="ml-auto text-vanta-text-muted hover:text-vanta-red transition-colors"
-                  >
-                    <X size={14} />
-                  </button>
-                </div>
-              ))}
-              <div className="flex gap-2">
-                <Input 
-                  placeholder="Enter address or ENS name" 
-                  className="flex-1 bg-vanta-elevated border-border-hover text-foreground placeholder:text-vanta-text-muted"
-                />
-                <Button 
-                  variant="outline" 
-                  className="border-vanta-teal text-vanta-teal hover:bg-vanta-teal hover:text-vanta-bg"
-                >
-                  Add
-                </Button>
+      case "blacklist": {
+        const field = "addresses"
+        const addresses = (localConfig[field] ?? []) as { address: string; label: string }[]
+        const isBlacklist = rule.type === "blacklist"
+        return (
+          <div className="pt-4 space-y-3">
+            {addresses.map((addr, index) => (
+              <div key={index} className="flex items-center gap-3 bg-vanta-elevated rounded-lg px-3 py-2">
+                <span className={cn("w-2 h-2 rounded-full shrink-0", isBlacklist ? "bg-vanta-red" : "bg-vanta-teal")} />
+                <span className="font-mono text-[13px] text-foreground flex-1 truncate">{addr.address}</span>
+                {addr.label && <span className="text-xs text-vanta-text-muted">{addr.label}</span>}
+                <button onClick={() => removeAddressFromList(field, index)} className="text-vanta-text-muted hover:text-vanta-red transition-colors">
+                  <X size={14} />
+                </button>
               </div>
+            ))}
+            <div className="flex gap-2">
+              <Input
+                placeholder="0x… or ENS name"
+                value={newAddress}
+                onChange={(e) => setNewAddress(e.target.value)}
+                className="flex-1 bg-vanta-elevated border-border-hover text-foreground placeholder:text-vanta-text-muted font-mono text-sm"
+              />
+              <Input
+                placeholder="Label (optional)"
+                value={newLabel}
+                onChange={(e) => setNewLabel(e.target.value)}
+                className="w-32 bg-vanta-elevated border-border-hover text-foreground placeholder:text-vanta-text-muted text-sm"
+              />
+              <Button
+                variant="outline"
+                onClick={() => addAddressToList(field)}
+                className={cn("border-vanta-teal text-vanta-teal hover:bg-vanta-teal hover:text-vanta-bg", isBlacklist && "border-vanta-red text-vanta-red hover:bg-vanta-red")}
+              >
+                {isBlacklist ? "Block" : "Add"}
+              </Button>
             </div>
-          )
-        }
-        if (rule.config?.contracts) {
-          return (
-            <div className="pt-4">
-              <div className="flex flex-wrap gap-2">
-                {rule.config.contracts.map((contract, index) => (
+          </div>
+        )
+      }
+
+      case "contract_whitelist": {
+        const enabled = (localConfig.contracts ?? []) as string[]
+        return (
+          <div className="pt-4">
+            <div className="flex flex-wrap gap-2">
+              {Object.keys(CONTRACT_ADDRESSES).map((name) => {
+                const on = enabled.includes(name)
+                return (
                   <button
-                    key={contract.name}
+                    key={name}
                     onClick={() => {
-                      const newContracts = rule.config?.contracts?.map((c, i) => 
-                        i === index ? { ...c, enabled: !c.enabled } : c
-                      )
-                      onUpdate(rule.id, { ...rule.config, contracts: newContracts })
+                      const next = on ? enabled.filter((c) => c !== name) : [...enabled, name]
+                      setLocalConfig({ ...localConfig, contracts: next })
                     }}
                     className={cn(
                       "px-3 py-1.5 rounded-full text-xs transition-colors",
-                      contract.enabled
-                        ? "bg-vanta-teal/10 text-vanta-teal"
-                        : "bg-vanta-elevated text-vanta-text-muted hover:text-foreground"
+                      on ? "bg-vanta-teal/10 text-vanta-teal" : "bg-vanta-elevated text-vanta-text-muted hover:text-foreground"
                     )}
                   >
-                    {contract.name} {contract.enabled && "✓"}
+                    {name} {on && "✓"}
                   </button>
-                ))}
-              </div>
+                )
+              })}
             </div>
-          )
-        }
-        return null
+          </div>
+        )
+      }
 
-      case "time":
+      case "quiet_hours":
         return (
           <div className="pt-4 space-y-4">
             <div className="flex items-center gap-4">
               <div className="flex-1">
                 <label className="text-xs text-vanta-text-muted mb-1 block">From</label>
-                <Input 
-                  type="time" 
-                  value={rule.config?.from || "02:00"}
-                  onChange={(e) => onUpdate(rule.id, { ...rule.config, from: e.target.value })}
+                <Input
+                  type="time"
+                  value={(localConfig.from as string) ?? "02:00"}
+                  onChange={(e) => setLocalConfig({ ...localConfig, from: e.target.value })}
                   className="bg-vanta-elevated border-border-hover text-foreground"
                 />
               </div>
               <div className="flex-1">
                 <label className="text-xs text-vanta-text-muted mb-1 block">To</label>
-                <Input 
-                  type="time" 
-                  value={rule.config?.to || "06:00"}
-                  onChange={(e) => onUpdate(rule.id, { ...rule.config, to: e.target.value })}
+                <Input
+                  type="time"
+                  value={(localConfig.to as string) ?? "06:00"}
+                  onChange={(e) => setLocalConfig({ ...localConfig, to: e.target.value })}
                   className="bg-vanta-elevated border-border-hover text-foreground"
                 />
               </div>
             </div>
             <div>
               <label className="text-xs text-vanta-text-muted mb-1 block">Timezone</label>
-              <select 
-                value={rule.config?.timezone || "UTC"}
-                onChange={(e) => onUpdate(rule.id, { ...rule.config, timezone: e.target.value })}
+              <select
+                value={(localConfig.timezone as string) ?? "UTC"}
+                onChange={(e) => setLocalConfig({ ...localConfig, timezone: e.target.value })}
                 className="w-full bg-vanta-elevated border border-border-hover text-foreground rounded-lg px-3 py-2 text-sm"
               >
                 <option value="UTC">UTC</option>
@@ -283,8 +272,6 @@ function RuleCard({ rule, isDynamic, onToggle, onUpdate, onDelete }: RuleCardPro
     }
   }
 
-  const hasEditView = rule.type === "limit" || rule.type === "whitelist" || rule.type === "time"
-
   return (
     <motion.div
       layout
@@ -299,20 +286,20 @@ function RuleCard({ rule, isDynamic, onToggle, onUpdate, onDelete }: RuleCardPro
         </div>
         <Switch
           checked={rule.enabled}
-          onCheckedChange={() => onToggle(rule.id)}
+          onCheckedChange={(checked) => onToggle(rule.id, checked)}
           className="data-[state=checked]:bg-vanta-teal"
         />
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
-            <h3 className="text-sm text-foreground">{rule.name}</h3>
+            <h3 className="text-sm text-foreground">{label.name}</h3>
             {isDynamic && (
               <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400 text-[10px] font-medium shrink-0">
-                <DynamicIcon size={10} />
+                <Zap size={10} />
                 Dynamic
               </span>
             )}
           </div>
-          <p className="text-xs text-vanta-text-muted truncate">{rule.description}</p>
+          <p className="text-xs text-vanta-text-muted truncate">{label.description}</p>
         </div>
         <div className="flex items-center gap-2">
           {hasEditView && (
@@ -321,10 +308,7 @@ function RuleCard({ rule, isDynamic, onToggle, onUpdate, onDelete }: RuleCardPro
               className="text-xs text-vanta-text-secondary hover:text-foreground transition-colors flex items-center gap-1"
             >
               Edit
-              <motion.div
-                animate={{ rotate: isExpanded ? 180 : 0 }}
-                transition={{ duration: 0.2 }}
-              >
+              <motion.div animate={{ rotate: isExpanded ? 180 : 0 }} transition={{ duration: 0.2 }}>
                 <ChevronDown size={14} />
               </motion.div>
             </button>
@@ -349,6 +333,22 @@ function RuleCard({ rule, isDynamic, onToggle, onUpdate, onDelete }: RuleCardPro
           >
             <div className="px-4 pb-4 border-t border-border">
               {renderEditView()}
+              <div className="mt-4 flex justify-end">
+                <Button
+                  onClick={handleSave}
+                  disabled={saving}
+                  size="sm"
+                  className="bg-vanta-teal text-vanta-bg hover:bg-vanta-teal/90 min-w-[80px]"
+                >
+                  {saving ? (
+                    <Loader2 size={14} className="animate-spin" />
+                  ) : saved ? (
+                    <><Check size={14} className="mr-1" /> Saved</>
+                  ) : (
+                    "Save"
+                  )}
+                </Button>
+              </div>
             </div>
           </motion.div>
         )}
@@ -357,18 +357,21 @@ function RuleCard({ rule, isDynamic, onToggle, onUpdate, onDelete }: RuleCardPro
   )
 }
 
+// Templates shown in the Add Rule modal
 const ruleTemplates = [
-  { id: "spending", name: "Spending limit", icon: DollarSign },
-  { id: "address", name: "Address whitelist", icon: Users },
-  { id: "contract", name: "Contract filter", icon: FileCode },
-  { id: "time", name: "Time restriction", icon: Clock },
-  { id: "block", name: "Block pattern", icon: ShieldOff },
-  { id: "custom", name: "Custom", icon: Zap },
+  { type: "daily_limit",              name: "Daily limit",             icon: DollarSign,  defaultConfig: { amount: 500 } },
+  { type: "per_tx_limit",             name: "Per-tx limit",            icon: DollarSign,  defaultConfig: { amount: 200 } },
+  { type: "whitelist",                name: "Trusted addresses",       icon: Users,       defaultConfig: { addresses: [] } },
+  { type: "blacklist",                name: "Blocked addresses",       icon: ShieldAlert, defaultConfig: { addresses: [] } },
+  { type: "contract_whitelist",       name: "Approved contracts",      icon: FileCode,    defaultConfig: { contracts: [] } },
+  { type: "quiet_hours",              name: "Quiet hours",             icon: Clock,       defaultConfig: { from: "02:00", to: "06:00", timezone: "UTC" } },
+  { type: "block_unlimited_approval", name: "Block ∞ approvals",       icon: ShieldOff,   defaultConfig: {} },
+  { type: "strip_calldata",           name: "Strip calldata",          icon: Zap,         defaultConfig: {} },
 ]
 
 interface AddRuleModalProps {
   onClose: () => void
-  onAdd: (template: string) => void
+  onAdd: (type: string, defaultConfig: Record<string, unknown>) => void
 }
 
 function AddRuleModal({ onClose, onAdd }: AddRuleModalProps) {
@@ -389,28 +392,35 @@ function AddRuleModal({ onClose, onAdd }: AddRuleModalProps) {
         className="relative w-full max-w-md bg-vanta-surface border border-border rounded-xl p-6"
         onClick={(e) => e.stopPropagation()}
       >
-        <button
-          onClick={onClose}
-          className="absolute top-4 right-4 p-2 text-vanta-text-muted hover:text-foreground transition-colors"
-        >
+        <button onClick={onClose} className="absolute top-4 right-4 p-2 text-vanta-text-muted hover:text-foreground transition-colors">
           <X size={20} />
         </button>
 
-        <h2 className="font-mono text-lg text-foreground mb-6">Add rule</h2>
+        <h2 className="font-mono text-lg text-foreground mb-2">Add rule</h2>
+        <p className="text-xs text-vanta-text-muted mb-6">Rules tagged <span className="text-blue-400">Dynamic</span> are enforced in the TEE at signing time.</p>
 
         <div className="grid grid-cols-2 gap-3">
-          {ruleTemplates.map((template) => {
-            const Icon = template.icon
+          {ruleTemplates.map((tmpl) => {
+            const Icon = tmpl.icon
+            const isDynamic = DYNAMIC_COMPATIBLE.has(tmpl.type)
             return (
               <motion.button
-                key={template.id}
+                key={tmpl.type}
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
-                onClick={() => onAdd(template.id)}
-                className="flex flex-col items-center gap-3 p-4 bg-vanta-elevated border border-border rounded-xl hover:border-vanta-teal/50 transition-colors"
+                onClick={() => onAdd(tmpl.type, tmpl.defaultConfig)}
+                className="flex flex-col items-start gap-2 p-4 bg-vanta-elevated border border-border rounded-xl hover:border-vanta-teal/50 transition-colors text-left"
               >
-                <Icon size={24} className="text-vanta-text-secondary" />
-                <span className="text-xs text-foreground">{template.name}</span>
+                <div className="flex items-center justify-between w-full">
+                  <Icon size={20} className="text-vanta-text-secondary" />
+                  {isDynamic && (
+                    <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400 text-[10px] font-medium">
+                      <Zap size={8} />
+                      Dynamic
+                    </span>
+                  )}
+                </div>
+                <span className="text-xs text-foreground leading-snug">{tmpl.name}</span>
               </motion.button>
             )
           })}
@@ -420,178 +430,133 @@ function AddRuleModal({ onClose, onAdd }: AddRuleModalProps) {
   )
 }
 
-// Build the Dynamic policy payload from a VANTA rule
-function toDynamicPolicy(rule: Rule) {
-  if (rule.type === "limit") {
-    // Per-transaction value limit (native ETH, EVM mainnet)
-    return {
-      chain: "EVM",
-      chainIds: [1],
-      name: rule.name,
-      ruleType: "allow",
-      addresses: [] as string[],
-      valueLimit: {
-        maxPerCall: String(Math.round((rule.config?.limit ?? 0) * 1e18)),
-      },
-    }
-  }
+// Sync a single rule to Dynamic Policy API
+async function syncWithDynamic(rule: DbRule) {
+  const policy = toDynamicPolicy(rule)
+  if (!policy) return
 
-  if (rule.type === "whitelist" && rule.config?.addresses) {
-    return {
-      chain: "EVM",
-      chainIds: [1],
-      name: rule.name,
-      ruleType: "allow",
-      addresses: rule.config.addresses.map((a) => a.address),
-    }
-  }
+  const existingId = rule.config?.dynamic_rule_id as string | undefined
+  const body = existingId
+    ? { rulesToUpdate: [{ id: existingId, ...policy }] }
+    : { rulesToAdd: [policy] }
 
-  if (rule.type === "whitelist" && rule.config?.contracts) {
-    const addresses = rule.config.contracts
-      .filter((c) => c.enabled)
-      .flatMap((c) => CONTRACT_ADDRESSES[c.name] ?? [])
-    return {
-      chain: "EVM",
-      chainIds: [1],
-      name: rule.name,
-      ruleType: "allow",
-      addresses,
-    }
-  }
+  const res = await fetch("/api/rules", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) return null
 
-  return null
+  const data = await res.json()
+  return (data?.rulesToAdd?.[0]?.id ?? data?.rulesToUpdate?.[0]?.id) as string | undefined
+}
+
+async function deleteFromDynamic(rule: DbRule) {
+  const ruleId = rule.config?.dynamic_rule_id as string | undefined
+  if (!ruleId) return
+  await fetch("/api/rules", {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ruleIdsToDelete: [ruleId] }),
+  })
 }
 
 export default function RulesPage() {
-  const [rules, setRules] = useState<Rule[]>(initialRules)
+  const { user, loading: userLoading } = useUser()
+  const { rules, loading: rulesLoading, toggleRule, updateConfig, addRule, deleteRule } = useRules(user?.id)
   const [showAddModal, setShowAddModal] = useState(false)
-  // Track in-flight Dynamic syncs per rule id
   const syncing = useRef<Set<string>>(new Set())
 
-  async function syncWithDynamic(rule: Rule) {
-    if (!DYNAMIC_COMPATIBLE.has(rule.id) || syncing.current.has(rule.id)) return
-    const policy = toDynamicPolicy(rule)
-    if (!policy) return
-
-    syncing.current.add(rule.id)
-    try {
-      const existingId = rule.config?.dynamicRuleId
-      const body = existingId
-        ? { rulesToUpdate: [{ id: existingId, ...policy }] }
-        : { rulesToAdd: [policy] }
-
-      const res = await fetch("/api/rules", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      })
-      if (!res.ok) return
-
-      const data = await res.json()
-      // Store the returned rule ID so future updates use PUT
-      const returnedId: string | undefined =
-        data?.rulesToAdd?.[0]?.id ?? data?.rulesToUpdate?.[0]?.id
-      if (returnedId && !existingId) {
-        setRules((prev) =>
-          prev.map((r) =>
-            r.id === rule.id
-              ? { ...r, config: { ...r.config, dynamicRuleId: returnedId } }
-              : r
-          )
-        )
-      }
-    } finally {
-      syncing.current.delete(rule.id)
-    }
-  }
-
-  async function deleteFromDynamic(rule: Rule) {
-    const ruleId = rule.config?.dynamicRuleId
-    if (!ruleId) return
-    await fetch("/api/rules", {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ruleIdsToDelete: [ruleId] }),
-    })
-  }
-
-  const handleToggle = (id: string) => {
+  const handleToggle = async (id: string, enabled: boolean) => {
+    await toggleRule(id, enabled)
     const rule = rules.find((r) => r.id === id)
     if (!rule) return
-    const updated = { ...rule, enabled: !rule.enabled }
-    setRules(rules.map((r) => (r.id === id ? updated : r)))
-    if (DYNAMIC_COMPATIBLE.has(id)) {
-      if (updated.enabled) syncWithDynamic(updated)
+    if (DYNAMIC_COMPATIBLE.has(rule.type)) {
+      if (enabled) syncWithDynamic({ ...rule, enabled })
       else deleteFromDynamic(rule)
     }
   }
 
-  const handleUpdate = (id: string, config: RuleConfig) => {
-    const updated = rules.map((r) => (r.id === id ? { ...r, config } : r))
-    setRules(updated)
-    const rule = updated.find((r) => r.id === id)
-    if (rule && DYNAMIC_COMPATIBLE.has(id) && rule.enabled) {
-      syncWithDynamic(rule)
+  const handleSave = async (id: string, config: Record<string, unknown>) => {
+    await updateConfig(id, config)
+    const rule = rules.find((r) => r.id === id)
+    if (!rule) return
+    if (DYNAMIC_COMPATIBLE.has(rule.type) && rule.enabled && !syncing.current.has(id)) {
+      syncing.current.add(id)
+      const returnedId = await syncWithDynamic({ ...rule, config })
+      syncing.current.delete(id)
+      // Persist Dynamic rule ID back to Supabase config
+      if (returnedId && !config.dynamic_rule_id) {
+        await updateConfig(id, { ...config, dynamic_rule_id: returnedId })
+      }
     }
   }
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     const rule = rules.find((r) => r.id === id)
     if (rule) deleteFromDynamic(rule)
-    setRules(rules.filter((r) => r.id !== id))
+    await deleteRule(id)
   }
 
-  const handleAddRule = (template: string) => {
-    const newRule: Rule = {
-      id: Date.now().toString(),
-      name: `New ${template} rule`,
-      description: "Configure this rule",
-      enabled: true,
-      type: template === "spending" ? "limit" : template === "address" ? "whitelist" : template === "contract" ? "whitelist" : template === "time" ? "time" : template === "block" ? "block" : "custom",
-      config: template === "spending" ? { limit: 500 } : undefined
-    }
-    setRules([...rules, newRule])
+  const handleAddRule = async (type: string, defaultConfig: Record<string, unknown>) => {
+    if (!user?.id) return
     setShowAddModal(false)
+    await addRule(type, defaultConfig, user.id)
   }
+
+  const isLoading = userLoading || rulesLoading
 
   return (
     <DashboardLayout title="Rules">
       <div className="space-y-4">
-        {/* Header */}
         <div className="flex items-center justify-between">
-          <h2 className="text-lg text-foreground">Your security policy</h2>
+          <div>
+            <h2 className="text-lg text-foreground">Your security policy</h2>
+            {!user && !userLoading && (
+              <p className="text-xs text-vanta-text-muted mt-0.5">Connect your wallet to manage rules</p>
+            )}
+          </div>
           <Button
             onClick={() => setShowAddModal(true)}
+            disabled={!user}
             variant="outline"
-            className="border-vanta-teal text-vanta-teal hover:bg-vanta-teal hover:text-vanta-bg"
+            className="border-vanta-teal text-vanta-teal hover:bg-vanta-teal hover:text-vanta-bg disabled:opacity-40"
           >
             <Plus size={16} className="mr-2" />
             Add rule
           </Button>
         </div>
 
-        {/* Rules List */}
-        <Reorder.Group
-          axis="y"
-          values={rules}
-          onReorder={setRules}
-          className="space-y-3"
-        >
-          {rules.map((rule) => (
-            <Reorder.Item key={rule.id} value={rule}>
-              <RuleCard
-                rule={rule}
-                isDynamic={DYNAMIC_COMPATIBLE.has(rule.id)}
-                onToggle={handleToggle}
-                onUpdate={handleUpdate}
-                onDelete={handleDelete}
-              />
-            </Reorder.Item>
-          ))}
-        </Reorder.Group>
+        {isLoading ? (
+          <div className="flex items-center justify-center py-16">
+            <Loader2 size={28} className="animate-spin text-vanta-teal" />
+          </div>
+        ) : rules.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-16 text-vanta-text-muted">
+            <ShieldOff size={40} className="mb-3 opacity-30" />
+            <p className="text-sm">No rules yet. Add one to start protecting your wallet.</p>
+          </div>
+        ) : (
+          <Reorder.Group
+            axis="y"
+            values={rules}
+            onReorder={() => {}}
+            className="space-y-3"
+          >
+            {rules.map((rule) => (
+              <Reorder.Item key={rule.id} value={rule}>
+                <RuleCard
+                  rule={rule}
+                  onToggle={handleToggle}
+                  onSave={handleSave}
+                  onDelete={handleDelete}
+                />
+              </Reorder.Item>
+            ))}
+          </Reorder.Group>
+        )}
       </div>
 
-      {/* Add Rule Modal */}
       <AnimatePresence>
         {showAddModal && (
           <AddRuleModal
