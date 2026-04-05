@@ -28,6 +28,7 @@ import { cn } from '@/lib/utils';
 
 const WORLD_APP_ID = process.env.NEXT_PUBLIC_WORLD_APP_ID as `app_${string}`;
 const WORLD_RP_ID = process.env.NEXT_PUBLIC_WORLD_RP_ID!;
+const WORLD_ENV = (process.env.NEXT_PUBLIC_WORLD_ENV ?? 'staging') as 'staging' | 'production';
 const ACTION = 'verify-vanta-guardian';
 
 interface WorldIdGateProps {
@@ -96,7 +97,15 @@ export function WorldIdGate({ address, compact, onVerified }: WorldIdGateProps) 
 
   const handleError = useCallback((errorCode: string) => {
     console.error('IDKit error:', errorCode);
-    setRpError(`World ID error: ${errorCode}. Make sure you scan the QR code with the Worldcoin Simulator (staging) or World App.`);
+    // 'failed_by_host_app' means our handleVerify threw — the real error is already
+    // in state.error from submitProof. Don't overwrite it with a misleading message.
+    if (errorCode !== 'failed_by_host_app') {
+      setRpError(
+        errorCode === 'connection_failed'
+          ? 'Could not connect to World App. Make sure the app is open and try again.'
+          : `World ID error: ${errorCode}. Open World App and scan the QR code to verify.`,
+      );
+    }
     setWidgetOpen(false);
   }, []);
 
@@ -135,8 +144,9 @@ export function WorldIdGate({ address, compact, onVerified }: WorldIdGateProps) 
           )}
           Verify with World ID
         </Button>
-        {error && <p className="text-xs text-vanta-red">{error}</p>}
-        {rpError && <p className="text-xs text-vanta-red">{rpError}</p>}
+        {(error || rpError) && (
+          <p className="text-xs text-vanta-red">{error || rpError}</p>
+        )}
 
         {rpContext && (
           <IDKitRequestWidget
@@ -146,7 +156,7 @@ export function WorldIdGate({ address, compact, onVerified }: WorldIdGateProps) 
             action={ACTION}
             rp_context={rpContext}
             allow_legacy_proofs={true}
-            environment="staging"
+            environment={WORLD_ENV}
             preset={orbLegacy({ signal: address })}
             handleVerify={handleVerify}
             onSuccess={handleSuccess}
@@ -395,8 +405,10 @@ export function WorldIdGate({ address, compact, onVerified }: WorldIdGateProps) 
               <p>{error || rpError}</p>
               {(error || rpError)?.includes('already been used') && (
                 <p className="mt-1 text-vanta-text-muted">
-                  Each World ID can only verify one VANTA guardian. This prevents
-                  Sybil attacks on the transaction approval system.
+                  This World ID is linked to a different wallet address. Each World ID
+                  can verify exactly one VANTA guardian — this prevents Sybil attacks.
+                  Switch to the wallet you originally verified with, or contact support
+                  if you need to re-link.
                 </p>
               )}
             </div>
@@ -420,10 +432,11 @@ export function WorldIdGate({ address, compact, onVerified }: WorldIdGateProps) 
           action={ACTION}
           rp_context={rpContext}
           allow_legacy_proofs={true}
-          environment="staging"
+          environment={WORLD_ENV}
           preset={orbLegacy({ signal: address })}
           handleVerify={handleVerify}
           onSuccess={handleSuccess}
+          onError={handleError}
         />
       )}
     </div>
