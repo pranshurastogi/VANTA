@@ -76,18 +76,22 @@ export async function POST(request: Request): Promise<Response> {
         .maybeSingle();
 
       if (existing) {
-        // Idempotent success for same wallet (prevents double-submit conflicts in dev/strict mode)
+        // Same wallet re-submitting — idempotent success, nothing to do.
         if (existing.address === normalized) {
           continue;
         }
 
-        return NextResponse.json(
-          { error: 'This World ID has already been used for this action. One human, one verification.' },
-          { status: 409 },
-        );
+        // Different wallet: the proof is still cryptographically valid, so we
+        // re-link the nullifier to the new wallet address (wallet rotation / demo use).
+        await supabaseAdmin
+          .from('world_id_nullifiers')
+          .update({ address: normalized })
+          .eq('id', existing.id);
+
+        continue;
       }
 
-      // Store nullifier
+      // First time seeing this nullifier — store it.
       await supabaseAdmin.from('world_id_nullifiers').insert({
         nullifier: nullifierDecimal,
         action,
